@@ -1,0 +1,13 @@
+[package]
+name = "webassembly"
+version = "0.1.0"
+authors = ["Richard Anaya"]
+edition = "2018"
+description = "a library for working with web assembly"
+license = "MIT OR Apache-2.0"
+repository = "https://www.github.com/richardanaya/webassembly"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+micromath = "1.0.0"
