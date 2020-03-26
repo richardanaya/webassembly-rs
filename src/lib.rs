@@ -569,5 +569,12 @@ mod tests {
         let n = -16384 as i64;
         let data = n.as_wasm_bytes();
         assert_eq!(n, data.try_extract_i64(0).unwrap().0);
+
+
+
+
+        let n = -16234324234 as i64;
+        let data = n.as_wasm_bytes();
+        assert_eq!(n, data.try_extract_i64(0).unwrap().0);
     }
 }
