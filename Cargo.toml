@@ -5,4 +5,5 @@ authors = ["Richard Anaya"]
 edition = "2018"
 description = "a library for working with web assembly"
 license = "MIT OR Apache-2.0"
+categories = ["wasm", "no-std"]
 repository = "https://www.github.com/richardanaya/webassembly"
