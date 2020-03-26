@@ -294,8 +294,8 @@ pub trait BytesWasmExt {
     fn try_extract_f32(self, start: usize) -> Result<(f32, usize), &'static str>;
     fn try_extract_f64(self, start: usize) -> Result<(f64, usize), &'static str>;
     fn try_extract_u32(self, start: usize) -> Result<(u32, usize), &'static str>;
-    /*fn try_extract_i32(self, start: usize) -> Result<(i32, usize), &'static str>;
-    fn try_extract_i64(self, start: usize) -> Result<(i64, usize), &'static str>;*/
+    fn try_extract_i32(self, start: usize) -> Result<(i32, usize), &'static str>;
+    fn try_extract_i64(self, start: usize) -> Result<(i64, usize), &'static str>;
 }
 
 impl BytesWasmExt for &[u8] {
@@ -340,9 +340,7 @@ impl BytesWasmExt for &[u8] {
         Ok((r, ct))
     }
 
-    /*fn try_extract_i32(self, start: usize) -> Result<(i32, usize), &'static str> {
-        //0x7F
-        //0b1 111111
+    fn try_extract_i32(self, start: usize) -> Result<(i32, usize), &'static str> {
         let mut i = 0;
         let mut r = 0;
         let mut ct = 0;
@@ -350,15 +348,15 @@ impl BytesWasmExt for &[u8] {
             if i >= self.len() {
                 return Err("invalid i32 representation");
             }
-            let cur_byte = self[i+start];
+            let cur_byte = self[i + start];
             ct += 1;
-            let has_more = cur_byte == 0x3F || cur_byte & 0x80 != 0;
-            let is_negative = (cur_byte & 0x40) != 0;
-            let cur_value = cur_byte & 0x3F;
-            r += (cur_value as i32) << i * 6;
+            let has_more = cur_byte & 0x80 != 0;
+            let cur_value = cur_byte & 0x7F;
+            r += (cur_value as i32) << i * 7;
             if !has_more {
+                let is_negative = (cur_byte & 0x40) != 0;
                 if is_negative {
-                    r = !r;
+                    r |= !0 << (i + 1) * 7;
                 }
                 break;
             }
@@ -367,9 +365,30 @@ impl BytesWasmExt for &[u8] {
         Ok((r, ct))
     }
 
-    fn try_extract_i64(self, _start: usize) -> Result<(i64, usize), &'static str> {
-        Ok((0, 0))
-    }*/
+    fn try_extract_i64(self, start: usize) -> Result<(i64, usize), &'static str> {
+        let mut i = 0;
+        let mut r = 0;
+        let mut ct = 0;
+        loop {
+            if i >= self.len() {
+                return Err("invalid i64 representation");
+            }
+            let cur_byte = self[i + start];
+            ct += 1;
+            let has_more = cur_byte & 0x80 != 0;
+            let cur_value = cur_byte & 0x7F;
+            r += (cur_value as i64) << i * 7;
+            if !has_more {
+                let is_negative = (cur_byte & 0x40) != 0;
+                if is_negative {
+                    r |= !0 << (i + 1) * 7;
+                }
+                break;
+            }
+            i += 1;
+        }
+        Ok((r, ct))
+    }
 }
 
 #[cfg(test)]
@@ -441,56 +460,114 @@ mod tests {
         assert_eq!(n, data.try_extract_f64(0).unwrap().0);
     }
 
-    /*#[test]
+    #[test]
     fn test_signed_int() {
         let n = 0 as i32;
         let data = n.as_wasm_bytes();
-        assert_eq!(data,[0]);
-        assert_eq!(n,data.try_extract_i32(0).unwrap().0);
+        assert_eq!(data, [0]);
+        assert_eq!(n, data.try_extract_i32(0).unwrap().0);
+
+        let n = 1 as i32;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data, [1]);
+        assert_eq!(n, data.try_extract_i32(0).unwrap().0);
+
+        let n = 2 as i32;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data, [2]);
+        assert_eq!(n, data.try_extract_i32(0).unwrap().0);
 
         let n = 42 as i32;
         let data = n.as_wasm_bytes();
-        assert_eq!(data,[42]);
-        assert_eq!(n,data.try_extract_i32(0).unwrap().0);
-
-        let n = -1 as i32;
-        let data = n.as_wasm_bytes();
-        assert_eq!(data,[0x7F]);
-        assert_eq!(n,data.try_extract_i32(0).unwrap().0);
-
-        /*let n = -2 as i32;
-        let data = n.as_wasm_bytes();
-        assert_eq!(data,[0x7E]);
-        assert_eq!(n,data.try_extract_i32(0).unwrap().0);
+        assert_eq!(data, [42]);
+        assert_eq!(n, data.try_extract_i32(0).unwrap().0);
 
         let n = 127 as i32;
         let data = n.as_wasm_bytes();
-        assert_eq!(data,[0xFF,0]);
-        assert_eq!(n,data.try_extract_i32(0).unwrap().0);
+        assert_eq!(data, [0xFF, 0]);
+        assert_eq!(n, data.try_extract_i32(0).unwrap().0);
 
         let n = 128 as i32;
         let data = n.as_wasm_bytes();
-        assert_eq!(data,[0x80,1]);
-        assert_eq!(n,data.try_extract_i32(0).unwrap().0);
-
-        let n = -127 as i32;
-        let data = n.as_wasm_bytes();
-        assert_eq!(data,[0x81,0x7F]);
-        assert_eq!(n,data.try_extract_i32(0).unwrap().0);
-
-        let n = -128 as i32;
-        let data = n.as_wasm_bytes();
-        assert_eq!(data,[0x80,0x7F]);
-        assert_eq!(n,data.try_extract_i32(0).unwrap().0);
+        assert_eq!(data, [0x80, 1]);
+        assert_eq!(n, data.try_extract_i32(0).unwrap().0);
 
         let n = 16384 as i32;
         let data = n.as_wasm_bytes();
-        assert_eq!(data,[0x80,0x80,1]);
-        assert_eq!(n,data.try_extract_i32(0).unwrap().0);
+        assert_eq!(data, [0x80, 0x80, 1]);
+        assert_eq!(n, data.try_extract_i32(0).unwrap().0);
+
+        let n = -1 as i32;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data, [0x7F]);
+        assert_eq!(n, data.try_extract_i32(0).unwrap().0);
+
+        let n = -2 as i32;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data, [0x7E]);
+        assert_eq!(n, data.try_extract_i32(0).unwrap().0);
+
+        let n = -127 as i32;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data, [0x81, 0x7F]);
+        assert_eq!(n, data.try_extract_i32(0).unwrap().0);
+
+        let n = -128 as i32;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data, [0x80, 0x7F]);
+        assert_eq!(n, data.try_extract_i32(0).unwrap().0);
 
         let n = -16384 as i32;
         let data = n.as_wasm_bytes();
-        assert_eq!(data,[0x80,0x80,0x7F]);
-        assert_eq!(n,data.try_extract_i32(0).unwrap().0);*/
-    }*/
+        assert_eq!(data, [0x80, 0x80, 0x7F]);
+        assert_eq!(n, data.try_extract_i32(0).unwrap().0);
+
+        let n = 0 as i64;
+        let data = n.as_wasm_bytes();
+        assert_eq!(n, data.try_extract_i64(0).unwrap().0);
+
+        let n = 1 as i64;
+        let data = n.as_wasm_bytes();
+        assert_eq!(n, data.try_extract_i64(0).unwrap().0);
+
+        let n = 2 as i64;
+        let data = n.as_wasm_bytes();
+        assert_eq!(n, data.try_extract_i64(0).unwrap().0);
+
+        let n = 42 as i64;
+        let data = n.as_wasm_bytes();
+        assert_eq!(n, data.try_extract_i64(0).unwrap().0);
+
+        let n = 127 as i64;
+        let data = n.as_wasm_bytes();
+        assert_eq!(n, data.try_extract_i64(0).unwrap().0);
+
+        let n = 128 as i64;
+        let data = n.as_wasm_bytes();
+        assert_eq!(n, data.try_extract_i64(0).unwrap().0);
+
+        let n = 16384 as i64;
+        let data = n.as_wasm_bytes();
+        assert_eq!(n, data.try_extract_i64(0).unwrap().0);
+
+        let n = -1 as i64;
+        let data = n.as_wasm_bytes();
+        assert_eq!(n, data.try_extract_i64(0).unwrap().0);
+
+        let n = -2 as i64;
+        let data = n.as_wasm_bytes();
+        assert_eq!(n, data.try_extract_i64(0).unwrap().0);
+
+        let n = -127 as i64;
+        let data = n.as_wasm_bytes();
+        assert_eq!(n, data.try_extract_i64(0).unwrap().0);
+
+        let n = -128 as i64;
+        let data = n.as_wasm_bytes();
+        assert_eq!(n, data.try_extract_i64(0).unwrap().0);
+
+        let n = -16384 as i64;
+        let data = n.as_wasm_bytes();
+        assert_eq!(n, data.try_extract_i64(0).unwrap().0);
+    }
 }
