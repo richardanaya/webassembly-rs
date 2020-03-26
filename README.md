@@ -1,8 +1,9 @@
 # webassembly
 
-A rust library for working with web assembly. Inclues all opcodes.
+A rust library for working with web assembly.
 
 - [x] `#![no_std]` and `alloc`
+- [x] includes all opcodes
 - [x] primitive type conversions
 
 # License
