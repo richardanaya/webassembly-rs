@@ -2,7 +2,6 @@
 #[macro_use]
 extern crate alloc;
 use alloc::vec::Vec;
-use micromath::F32Ext;
 
 pub const MAGIC_NUMBER: &'static [i32] = &[0, 97, 115, 109];
 pub const VERSION_1: &'static [i32] = &[1, 0, 0, 0];
@@ -214,15 +213,19 @@ impl TypeWasmExt for u32 {
     fn as_wasm_bytes(self) -> Vec<u8> {
         let mut value = self;
         let mut bytes: Vec<u8> = vec![];
-        while {
+        loop {
             let mut byte = (value & 0x7F) as u8;
             value = value >> 0x07;
-            if value != 0 {
+            let is_done = value == 0;
+            if !is_done {
+                // add more flag to byte
                 byte = byte | 0x80;
             }
             bytes.push(byte);
-            value != 0
-        } {}
+            if is_done {
+                break;
+            }
+        }
         bytes
     }
 }
@@ -231,24 +234,41 @@ impl TypeWasmExt for i32 {
     fn as_wasm_bytes(self) -> Vec<u8> {
         let mut value = self;
         let mut bytes: Vec<u8> = vec![];
-        let size = (value as f32).abs().log2().ceil() as i32;
-        let negative = value < 0;
-        let mut more = true;
-        while more {
-            let mut byte = (value & 127) as u8;
-            value = value >> 7;
-
-            if negative {
-                value = value | (-(1 << (size - 7)));
-            }
-
-            if (value == 0 && ((byte & 0x40) == 0)) || (value == -1 && ((byte & 0x40) == 0x40)) {
-                more = false;
+        loop {
+            let mut byte = value as u8;
+            value >>= 6;
+            let is_done = value == 0 || value == -1;
+            if is_done {
+                byte &= 0x7F;
+                bytes.push(byte);
+                break;
             } else {
-                byte = byte | 128;
+                value >>= 1;
+                byte |= 0x80;
+                bytes.push(byte);
             }
+        }
+        bytes
+    }
+}
 
-            bytes.push(byte);
+impl TypeWasmExt for i64 {
+    fn as_wasm_bytes(self) -> Vec<u8> {
+        let mut value = self;
+        let mut bytes: Vec<u8> = vec![];
+        loop {
+            let mut byte = value as u8;
+            value >>= 6;
+            let is_done = value == 0 || value == -1;
+            if is_done {
+                byte &= 0x7F;
+                bytes.push(byte);
+                break;
+            } else {
+                value >>= 1;
+                byte |= 0x80;
+                bytes.push(byte);
+            }
         }
         bytes
     }
@@ -268,4 +288,209 @@ impl TypeWasmExt for f32 {
         let bytes: Vec<u8> = raw_bytes.to_vec();
         bytes
     }
+}
+
+pub trait BytesWasmExt {
+    fn try_extract_f32(self, start: usize) -> Result<(f32, usize), &'static str>;
+    fn try_extract_f64(self, start: usize) -> Result<(f64, usize), &'static str>;
+    fn try_extract_u32(self, start: usize) -> Result<(u32, usize), &'static str>;
+    /*fn try_extract_i32(self, start: usize) -> Result<(i32, usize), &'static str>;
+    fn try_extract_i64(self, start: usize) -> Result<(i64, usize), &'static str>;*/
+}
+
+impl BytesWasmExt for &[u8] {
+    fn try_extract_f32(self, start: usize) -> Result<(f32, usize), &'static str> {
+        if start + 4 > self.len() {
+            return Err("invalid f32 representation");
+        }
+        let raw_bytes: [u8; 4] = [self[0], self[1], self[2], self[3]];
+        let r: f32 = unsafe { core::mem::transmute(raw_bytes) };
+        Ok((r, 4))
+    }
+
+    fn try_extract_f64(self, start: usize) -> Result<(f64, usize), &'static str> {
+        if start + 8 > self.len() {
+            return Err("invalid f64 representation");
+        }
+        let raw_bytes: [u8; 8] = [
+            self[0], self[1], self[2], self[3], self[4], self[5], self[6], self[7],
+        ];
+        let r: f64 = unsafe { core::mem::transmute(raw_bytes) };
+        Ok((r, 4))
+    }
+
+    fn try_extract_u32(self, start: usize) -> Result<(u32, usize), &'static str> {
+        let mut i = 0;
+        let mut r = 0;
+        let mut ct = 0;
+        loop {
+            if i >= self.len() {
+                return Err("invalid u32 representation");
+            }
+            let cur_byte = self[i + start];
+            let has_more = cur_byte & 0x80 != 0;
+            let cur_value = cur_byte & 0x7F;
+            ct += 1;
+            r += (cur_value as u32) << i * 7;
+            if !has_more {
+                break;
+            }
+            i += 1;
+        }
+        Ok((r, ct))
+    }
+
+    /*fn try_extract_i32(self, start: usize) -> Result<(i32, usize), &'static str> {
+        //0x7F
+        //0b1 111111
+        let mut i = 0;
+        let mut r = 0;
+        let mut ct = 0;
+        loop {
+            if i >= self.len() {
+                return Err("invalid i32 representation");
+            }
+            let cur_byte = self[i+start];
+            ct += 1;
+            let has_more = cur_byte == 0x3F || cur_byte & 0x80 != 0;
+            let is_negative = (cur_byte & 0x40) != 0;
+            let cur_value = cur_byte & 0x3F;
+            r += (cur_value as i32) << i * 6;
+            if !has_more {
+                if is_negative {
+                    r = !r;
+                }
+                break;
+            }
+            i += 1;
+        }
+        Ok((r, ct))
+    }
+
+    fn try_extract_i64(self, _start: usize) -> Result<(i64, usize), &'static str> {
+        Ok((0, 0))
+    }*/
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::BytesWasmExt;
+    use crate::TypeWasmExt;
+
+    #[test]
+    fn test_unsigned_int() {
+        let n = 0 as u32;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data, [0]);
+        assert_eq!(n, data.try_extract_u32(0).unwrap().0);
+
+        let n = 42 as u32;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data, [42]);
+        assert_eq!(n, data.try_extract_u32(0).unwrap().0);
+
+        let n = 127 as u32;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data, [127]);
+        assert_eq!(n, data.try_extract_u32(0).unwrap().0);
+
+        let n = 128 as u32;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data, [0x80, 1]);
+        assert_eq!(n, data.try_extract_u32(0).unwrap().0);
+
+        let n = 16384 as u32;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data, [0x80, 0x80, 1]);
+        assert_eq!(n, data.try_extract_u32(0).unwrap().0);
+    }
+
+    #[test]
+    fn test_unsigned_f32() {
+        let n = 0.0 as f32;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data, [0, 0, 0, 0]);
+        assert_eq!(n, data.try_extract_f32(0).unwrap().0);
+
+        let n = 3.14 as f32;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data, [195, 245, 72, 64]);
+        assert_eq!(n, data.try_extract_f32(0).unwrap().0);
+
+        let n = -1000.0 as f32;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data, [0, 0, 122, 196]);
+        assert_eq!(n, data.try_extract_f32(0).unwrap().0);
+    }
+
+    #[test]
+    fn test_unsigned_f64() {
+        let n = 0.0 as f64;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data, [0, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(n, data.try_extract_f64(0).unwrap().0);
+
+        let n = 3.14 as f64;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data, [31, 133, 235, 81, 184, 30, 9, 64]);
+        assert_eq!(n, data.try_extract_f64(0).unwrap().0);
+
+        let n = -1000.0 as f64;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data, [0, 0, 0, 0, 0, 64, 143, 192]);
+        assert_eq!(n, data.try_extract_f64(0).unwrap().0);
+    }
+
+    /*#[test]
+    fn test_signed_int() {
+        let n = 0 as i32;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data,[0]);
+        assert_eq!(n,data.try_extract_i32(0).unwrap().0);
+
+        let n = 42 as i32;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data,[42]);
+        assert_eq!(n,data.try_extract_i32(0).unwrap().0);
+
+        let n = -1 as i32;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data,[0x7F]);
+        assert_eq!(n,data.try_extract_i32(0).unwrap().0);
+
+        /*let n = -2 as i32;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data,[0x7E]);
+        assert_eq!(n,data.try_extract_i32(0).unwrap().0);
+
+        let n = 127 as i32;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data,[0xFF,0]);
+        assert_eq!(n,data.try_extract_i32(0).unwrap().0);
+
+        let n = 128 as i32;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data,[0x80,1]);
+        assert_eq!(n,data.try_extract_i32(0).unwrap().0);
+
+        let n = -127 as i32;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data,[0x81,0x7F]);
+        assert_eq!(n,data.try_extract_i32(0).unwrap().0);
+
+        let n = -128 as i32;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data,[0x80,0x7F]);
+        assert_eq!(n,data.try_extract_i32(0).unwrap().0);
+
+        let n = 16384 as i32;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data,[0x80,0x80,1]);
+        assert_eq!(n,data.try_extract_i32(0).unwrap().0);
+
+        let n = -16384 as i32;
+        let data = n.as_wasm_bytes();
+        assert_eq!(data,[0x80,0x80,0x7F]);
+        assert_eq!(n,data.try_extract_i32(0).unwrap().0);*/
+    }*/
 }
