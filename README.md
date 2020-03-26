@@ -4,7 +4,13 @@ A rust library for working with web assembly.
 
 - [x] `#![no_std]` and `alloc`
 - [x] includes all opcodes
-- [x] primitive type conversions
+- [x] primitive type -> wasm type represenation helper
+- [x] wasm type represenation -> primtive type helper
+
+```toml
+[dependencies]
+webassembly = "0.1"
+```
 
 # License
 
