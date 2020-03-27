@@ -3,8 +3,8 @@
 extern crate alloc;
 use alloc::vec::Vec;
 
-pub const MAGIC_NUMBER: &'static [i32] = &[0, 97, 115, 109];
-pub const VERSION_1: &'static [i32] = &[1, 0, 0, 0];
+pub const MAGIC_NUMBER: &'static [u8] = &[0, 97, 115, 109];
+pub const VERSION_1: &'static [u8] = &[1, 0, 0, 0];
 pub const I32: u8 = 127;
 pub const I64: u8 = 126;
 pub const F32: u8 = 125;
