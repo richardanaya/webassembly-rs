@@ -230,7 +230,6 @@ impl TypeWasmExt for u32 {
     }
 }
 
-
 impl TypeWasmExt for usize {
     fn to_wasm_bytes(self) -> Vec<u8> {
         let mut value = self;

@@ -3,7 +3,7 @@ use std::io::prelude::*;
 use webassembly::*;
 
 fn main() -> std::io::Result<()> {
-    // lets make a program with a single main function 
+    // lets make a program with a single main function
     // that returns 42, byte by byte
 
     // start with MAGIC_NUMBER
@@ -23,7 +23,7 @@ fn main() -> std::io::Result<()> {
         program.extend_from_slice(&sec.len().to_wasm_bytes()); // push the byte length of the section
         program.extend_from_slice(&sec); // push the data of the section
     }
-        
+
     // MAKE THE FUNCTION SECTION
     {
         program.push(SECTION_FUNCTION);
@@ -76,10 +76,10 @@ fn main() -> std::io::Result<()> {
         // code block for "main"
         let mut code = vec![];
         // we have zero local variables, if we did we'd specify their count and types here
-        code.extend_from_slice(&0u32.to_wasm_bytes()); 
+        code.extend_from_slice(&0u32.to_wasm_bytes());
         code.extend_from_slice(&[
             I32_CONST, 42,  // return 42
-            END             // end function
+            END, // end function
         ]);
 
         sec.extend_from_slice(&1.to_wasm_bytes()); // number of code blocks (only 1 for main)
