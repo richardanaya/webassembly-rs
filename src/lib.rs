@@ -230,6 +230,28 @@ impl TypeWasmExt for u32 {
     }
 }
 
+
+impl TypeWasmExt for usize {
+    fn to_wasm_bytes(self) -> Vec<u8> {
+        let mut value = self;
+        let mut bytes: Vec<u8> = vec![];
+        loop {
+            let mut byte = (value & 0x7F) as u8;
+            value = value >> 0x07;
+            let is_done = value == 0;
+            if !is_done {
+                // add more flag to byte
+                byte = byte | 0x80;
+            }
+            bytes.push(byte);
+            if is_done {
+                break;
+            }
+        }
+        bytes
+    }
+}
+
 impl TypeWasmExt for i32 {
     fn to_wasm_bytes(self) -> Vec<u8> {
         let mut value = self;
