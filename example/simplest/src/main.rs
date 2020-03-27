@@ -5,8 +5,12 @@ use webassembly::*;
 fn main() -> std::io::Result<()> {
     // lets make a program with a single main function 
     // that returns 42, byte by byte
-    let mut program: Vec<u8> = vec![];
-    program.extend_from_slice(MAGIC_NUMBER);
+
+    // start with MAGIC_NUMBER
+    let mut program = MAGIC_NUMBER.to_vec();
+    // add the version
+    program.extend_from_slice(VERSION_1)
+
 
     // write out the bytes
     let mut buffer = File::create("simplest.wasm")?;
