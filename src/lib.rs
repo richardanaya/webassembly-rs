@@ -377,7 +377,9 @@ impl BytesWasmExt for &[u8] {
             if !has_more {
                 let is_negative = (cur_byte & 0x40) != 0;
                 if is_negative {
-                    r |= !0 << (i + 1) * 7;
+                    if i < 4 {
+                        r |= !0 << (i+1) * 7
+                    };
                 }
                 break;
             }
@@ -402,7 +404,9 @@ impl BytesWasmExt for &[u8] {
             if !has_more {
                 let is_negative = (cur_byte & 0x40) != 0;
                 if is_negative {
-                    r |= !0 << (i + 1) * 7;
+                    if i < 8 {
+                        r |= !0 << (i + 1) * 7;
+                    }
                 }
                 break;
             }
@@ -442,6 +446,11 @@ mod tests {
         let n = 16384 as u32;
         let data = n.to_wasm_bytes();
         assert_eq!(data, [0x80, 0x80, 1]);
+        assert_eq!(n, data.try_extract_u32(0).unwrap().0);
+        
+        let n = 2139062144 as u32;
+        let data = n.to_wasm_bytes();
+        assert_eq!(data, [128, 255, 253, 251, 7]);
         assert_eq!(n, data.try_extract_u32(0).unwrap().0);
     }
 
@@ -542,6 +551,13 @@ mod tests {
         let data = n.to_wasm_bytes();
         assert_eq!(data, [0x80, 0x80, 0x7F]);
         assert_eq!(n, data.try_extract_i32(0).unwrap().0);
+
+
+        let n = -2139062144 as i32;
+        let data = n.to_wasm_bytes();
+        assert_eq!(data, [128, 129, 130, 132, 120]);
+        assert_eq!(n, data.try_extract_i32(0).unwrap().0);
+
 
         let n = 0 as i64;
         let data = n.to_wasm_bytes();
