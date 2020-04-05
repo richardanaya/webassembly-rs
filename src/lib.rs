@@ -337,7 +337,7 @@ impl BytesWasmExt for [u8] {
             self[0], self[1], self[2], self[3], self[4], self[5], self[6], self[7],
         ];
         let r: f64 = unsafe { core::mem::transmute(raw_bytes) };
-        Ok((r, 4))
+        Ok((r, 8))
     }
 
     fn try_extract_u32(&self, start: usize) -> Result<(u32, usize), &'static str> {
