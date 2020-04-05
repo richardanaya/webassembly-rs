@@ -312,15 +312,15 @@ impl TypeWasmExt for f32 {
 }
 
 pub trait BytesWasmExt {
-    fn try_extract_f32(self, start: usize) -> Result<(f32, usize), &'static str>;
-    fn try_extract_f64(self, start: usize) -> Result<(f64, usize), &'static str>;
-    fn try_extract_u32(self, start: usize) -> Result<(u32, usize), &'static str>;
-    fn try_extract_i32(self, start: usize) -> Result<(i32, usize), &'static str>;
-    fn try_extract_i64(self, start: usize) -> Result<(i64, usize), &'static str>;
+    fn try_extract_f32(&self, start: usize) -> Result<(f32, usize), &'static str>;
+    fn try_extract_f64(&self, start: usize) -> Result<(f64, usize), &'static str>;
+    fn try_extract_u32(&self, start: usize) -> Result<(u32, usize), &'static str>;
+    fn try_extract_i32(&self, start: usize) -> Result<(i32, usize), &'static str>;
+    fn try_extract_i64(&self, start: usize) -> Result<(i64, usize), &'static str>;
 }
 
-impl BytesWasmExt for &[u8] {
-    fn try_extract_f32(self, start: usize) -> Result<(f32, usize), &'static str> {
+impl BytesWasmExt for [u8] {
+    fn try_extract_f32(&self, start: usize) -> Result<(f32, usize), &'static str> {
         if start + 4 > self.len() {
             return Err("invalid f32 representation");
         }
@@ -329,7 +329,7 @@ impl BytesWasmExt for &[u8] {
         Ok((r, 4))
     }
 
-    fn try_extract_f64(self, start: usize) -> Result<(f64, usize), &'static str> {
+    fn try_extract_f64(&self, start: usize) -> Result<(f64, usize), &'static str> {
         if start + 8 > self.len() {
             return Err("invalid f64 representation");
         }
@@ -340,7 +340,7 @@ impl BytesWasmExt for &[u8] {
         Ok((r, 4))
     }
 
-    fn try_extract_u32(self, start: usize) -> Result<(u32, usize), &'static str> {
+    fn try_extract_u32(&self, start: usize) -> Result<(u32, usize), &'static str> {
         let mut i = 0;
         let mut r = 0;
         let mut ct = 0;
@@ -361,7 +361,7 @@ impl BytesWasmExt for &[u8] {
         Ok((r, ct))
     }
 
-    fn try_extract_i32(self, start: usize) -> Result<(i32, usize), &'static str> {
+    fn try_extract_i32(&self, start: usize) -> Result<(i32, usize), &'static str> {
         let mut i = 0;
         let mut r = 0;
         let mut ct = 0;
@@ -388,7 +388,7 @@ impl BytesWasmExt for &[u8] {
         Ok((r, ct))
     }
 
-    fn try_extract_i64(self, start: usize) -> Result<(i64, usize), &'static str> {
+    fn try_extract_i64(&self, start: usize) -> Result<(i64, usize), &'static str> {
         let mut i = 0;
         let mut r = 0;
         let mut ct = 0;
