@@ -206,12 +206,12 @@ pub const IMMUTABLE: u8 = 0;
 pub const MUTABLE: u8 = 1;
 
 pub trait TypeWasmExt {
-    fn into_wasm_bytes(self) -> Vec<u8>;
+    fn into_wasm_bytes(&self) -> Vec<u8>;
 }
 
 impl TypeWasmExt for u32 {
-    fn into_wasm_bytes(self) -> Vec<u8> {
-        let mut value = self;
+    fn into_wasm_bytes(&self) -> Vec<u8> {
+        let mut value = *self;
         let mut bytes: Vec<u8> = vec![];
         loop {
             let mut byte = (value & 0x7F) as u8;
@@ -231,8 +231,8 @@ impl TypeWasmExt for u32 {
 }
 
 impl TypeWasmExt for usize {
-    fn into_wasm_bytes(self) -> Vec<u8> {
-        let mut value = self;
+    fn into_wasm_bytes(&self) -> Vec<u8> {
+        let mut value = *self;
         let mut bytes: Vec<u8> = vec![];
         loop {
             let mut byte = (value & 0x7F) as u8;
@@ -252,8 +252,8 @@ impl TypeWasmExt for usize {
 }
 
 impl TypeWasmExt for i32 {
-    fn into_wasm_bytes(self) -> Vec<u8> {
-        let mut value = self;
+    fn into_wasm_bytes(&self) -> Vec<u8> {
+        let mut value = *self;
         let mut bytes: Vec<u8> = vec![];
         loop {
             let mut byte = value as u8;
@@ -274,8 +274,8 @@ impl TypeWasmExt for i32 {
 }
 
 impl TypeWasmExt for i64 {
-    fn into_wasm_bytes(self) -> Vec<u8> {
-        let mut value = self;
+    fn into_wasm_bytes(&self) -> Vec<u8> {
+        let mut value = *self;
         let mut bytes: Vec<u8> = vec![];
         loop {
             let mut byte = value as u8;
@@ -296,16 +296,16 @@ impl TypeWasmExt for i64 {
 }
 
 impl TypeWasmExt for f64 {
-    fn into_wasm_bytes(self) -> Vec<u8> {
-        let raw_bytes: [u8; 8] = unsafe { core::mem::transmute(self) };
+    fn into_wasm_bytes(&self) -> Vec<u8> {
+        let raw_bytes: [u8; 8] = unsafe { core::mem::transmute(*self) };
         let bytes: Vec<u8> = raw_bytes.to_vec();
         bytes
     }
 }
 
 impl TypeWasmExt for f32 {
-    fn into_wasm_bytes(self) -> Vec<u8> {
-        let raw_bytes: [u8; 4] = unsafe { core::mem::transmute(self) };
+    fn into_wasm_bytes(&self) -> Vec<u8> {
+        let raw_bytes: [u8; 4] = unsafe { core::mem::transmute(*self) };
         let bytes: Vec<u8> = raw_bytes.to_vec();
         bytes
     }
