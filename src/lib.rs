@@ -448,6 +448,12 @@ mod tests {
         let data = n.to_wasm_bytes();
         assert_eq!(data, [128, 255, 253, 251, 7]);
         assert_eq!(n, data.try_extract_u32(0).unwrap().0);
+
+        let n = 1191 as i32;
+        let version_a = [167 as u8, 9];
+        let version_b = [0xA7 as u8, 0x89, 0x80, 0x80, 0x00];
+        assert_eq!(n, version_a.try_extract_i32(0).unwrap().0);
+        assert_eq!(n, version_b.try_extract_i32(0).unwrap().0);
     }
 
     #[test]
