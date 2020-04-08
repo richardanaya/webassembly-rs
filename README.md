@@ -9,7 +9,7 @@ A rust library for working with web assembly.
 
 ```toml
 [dependencies]
-webassembly = "0.3"
+webassembly = "0.8"
 ```
 
 # License
