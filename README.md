@@ -1,11 +1,9 @@
-# webassembly
+# webassembly-rs
 
-A rust library for working with web assembly.
+A Rust library for working with WebAssembly aiming to provide foundational op code values and conversions of foundation types (i32,f64,etc.) used at the bytecode level.
 
-- [x] `#![no_std]` and `alloc`
+- [x] deponds only on `#![no_std]` and `alloc` 
 - [x] includes all opcodes
-- [x] primitive type -> wasm type representation helper
-- [x] wasm type representation -> primitive type helper
 
 ```toml
 [dependencies]
