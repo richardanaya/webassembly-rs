@@ -2,7 +2,7 @@
 
 A Rust library provide opcode values and conversions of foundation types (i32,f64,etc.) used at the bytecode level in WebAssembly. This is mostly meant to be used by compilers, interpreters, parsers, encoders. For a more powerful library, checkout [watson](http://github.com/richardanaya/watson).
 
-- [x] deponds only on `#![no_std]` and `alloc` 
+- [x] depends only on `#![no_std]` and `alloc` 
 - [x] includes all opcodes
 
 ```toml
