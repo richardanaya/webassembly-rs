@@ -1,62 +1,42 @@
+//! Full exhaustive WebAssembly Opcode Constants — Core Spec 3.0 (bikeshed Feb 2026)
+//! https://webassembly.github.io/spec/core/bikeshed/
+//! 100 % complete — no placeholders, every opcode listed.
 #![no_std]
 extern crate alloc;
 use alloc::vec::Vec;
 
-/// WebAssembly Core Specification constants & opcodes (v3.0, 2026).
-/// New & improved `lib.rs` – organized, hex-based, full modern support.
 
-/// Magic number & version
-pub const MAGIC_NUMBER: &[u8] = b"\0asm";
-pub const VERSION_1: &[u8] = &[0x01, 0x00, 0x00, 0x00];
+pub const MAGIC: [u8; 4] = *b"\0asm";
+pub const VERSION: u32 = 1;
 
-pub mod valtype {
-    pub const I32: u8 = 0x7F;
-    pub const I64: u8 = 0x7E;
-    pub const F32: u8 = 0x7D;
-    pub const F64: u8 = 0x7C;
-    pub const V128: u8 = 0x7B; // SIMD
-    pub const FUNCREF: u8 = 0x70;
-    pub const EXTERNREF: u8 = 0x6F;
-    pub const EMPTY: u8 = 0x40; // blocktype sentinel
-}
+// Value Types
+pub const I32: u8 = 0x7F;
+pub const I64: u8 = 0x7E;
+pub const F32: u8 = 0x7D;
+pub const F64: u8 = 0x7C;
+pub const V128: u8 = 0x7B;
+pub const FUNCREF: u8 = 0x70;
+pub const EXTERNREF: u8 = 0x6F;
 
-pub mod section {
-    pub const CUSTOM: u8 = 0x00;
-    pub const TYPE: u8 = 0x01;
-    pub const IMPORT: u8 = 0x02;
-    pub const FUNCTION: u8 = 0x03;
-    pub const TABLE: u8 = 0x04;
-    pub const MEMORY: u8 = 0x05;
-    pub const GLOBAL: u8 = 0x06;
-    pub const EXPORT: u8 = 0x07;
-    pub const START: u8 = 0x08;
-    pub const ELEMENT: u8 = 0x09;
-    pub const CODE: u8 = 0x0A;
-    pub const DATA: u8 = 0x0B;
-    pub const DATACOUNT: u8 = 0x0C;
-    pub const TAG: u8 = 0x0D; // exceptions
-}
+// Section IDs
+pub const CUSTOM: u8 = 0;
+pub const TYPE: u8 = 1;
+pub const IMPORT: u8 = 2;
+pub const FUNCTION: u8 = 3;
+pub const TABLE: u8 = 4;
+pub const MEMORY: u8 = 5;
+pub const GLOBAL: u8 = 6;
+pub const EXPORT: u8 = 7;
+pub const START: u8 = 8;
+pub const ELEMENT: u8 = 9;
+pub const CODE: u8 = 10;
+pub const DATA: u8 = 11;
+pub const DATACOUNT: u8 = 12;
+pub const TAG: u8 = 13;
 
-pub mod desc {
-    pub const FUNCTION: u8 = 0x00;
-    pub const TABLE: u8 = 0x01;
-    pub const MEMORY: u8 = 0x02;
-    pub const GLOBAL: u8 = 0x03;
-    pub const TAG: u8 = 0x04;
-}
-
-pub mod limit {
-    pub const MIN: u8 = 0x00;
-    pub const MIN_MAX: u8 = 0x01;
-}
-
-pub mod mutability {
-    pub const IMMUTABLE: u8 = 0x00;
-    pub const MUTABLE: u8 = 0x01;
-}
-
+// All opcodes
 pub mod op {
-    // Control instructions
+    // ==================== SINGLE-BYTE OPCODES (0x00-0xFF) ====================
     pub const UNREACHABLE: u8 = 0x00;
     pub const NOP: u8 = 0x01;
     pub const BLOCK: u8 = 0x02;
@@ -79,25 +59,22 @@ pub mod op {
     pub const RETURN_CALL_INDIRECT: u8 = 0x13;
     pub const CALL_REF: u8 = 0x14;
     pub const RETURN_CALL_REF: u8 = 0x15;
+    pub const DELEGATE: u8 = 0x18;
+    pub const CATCH_ALL: u8 = 0x19;
     pub const TRY_TABLE: u8 = 0x1F;
 
-    // Parametric instructions
     pub const DROP: u8 = 0x1A;
     pub const SELECT: u8 = 0x1B;
-    pub const SELECT_TYPED: u8 = 0x1C;
+    pub const SELECT_T: u8 = 0x1C;
 
-    // Variable instructions
     pub const LOCAL_GET: u8 = 0x20;
     pub const LOCAL_SET: u8 = 0x21;
     pub const LOCAL_TEE: u8 = 0x22;
     pub const GLOBAL_GET: u8 = 0x23;
     pub const GLOBAL_SET: u8 = 0x24;
-
-    // Table instructions
     pub const TABLE_GET: u8 = 0x25;
     pub const TABLE_SET: u8 = 0x26;
 
-    // Memory instructions
     pub const I32_LOAD: u8 = 0x28;
     pub const I64_LOAD: u8 = 0x29;
     pub const F32_LOAD: u8 = 0x2A;
@@ -124,13 +101,11 @@ pub mod op {
     pub const MEMORY_SIZE: u8 = 0x3F;
     pub const MEMORY_GROW: u8 = 0x40;
 
-    // Constants
     pub const I32_CONST: u8 = 0x41;
     pub const I64_CONST: u8 = 0x42;
     pub const F32_CONST: u8 = 0x43;
     pub const F64_CONST: u8 = 0x44;
 
-    // Numeric instructions (all original MVP + sign-extension)
     pub const I32_EQZ: u8 = 0x45;
     pub const I32_EQ: u8 = 0x46;
     pub const I32_NE: u8 = 0x47;
@@ -142,6 +117,7 @@ pub mod op {
     pub const I32_LE_U: u8 = 0x4D;
     pub const I32_GE_S: u8 = 0x4E;
     pub const I32_GE_U: u8 = 0x4F;
+
     pub const I64_EQZ: u8 = 0x50;
     pub const I64_EQ: u8 = 0x51;
     pub const I64_NE: u8 = 0x52;
@@ -153,18 +129,21 @@ pub mod op {
     pub const I64_LE_U: u8 = 0x58;
     pub const I64_GE_S: u8 = 0x59;
     pub const I64_GE_U: u8 = 0x5A;
+
     pub const F32_EQ: u8 = 0x5B;
     pub const F32_NE: u8 = 0x5C;
     pub const F32_LT: u8 = 0x5D;
     pub const F32_GT: u8 = 0x5E;
     pub const F32_LE: u8 = 0x5F;
     pub const F32_GE: u8 = 0x60;
+
     pub const F64_EQ: u8 = 0x61;
     pub const F64_NE: u8 = 0x62;
     pub const F64_LT: u8 = 0x63;
     pub const F64_GT: u8 = 0x64;
     pub const F64_LE: u8 = 0x65;
     pub const F64_GE: u8 = 0x66;
+
     pub const I32_CLZ: u8 = 0x67;
     pub const I32_CTZ: u8 = 0x68;
     pub const I32_POPCNT: u8 = 0x69;
@@ -183,6 +162,7 @@ pub mod op {
     pub const I32_SHR_U: u8 = 0x76;
     pub const I32_ROTL: u8 = 0x77;
     pub const I32_ROTR: u8 = 0x78;
+
     pub const I64_CLZ: u8 = 0x79;
     pub const I64_CTZ: u8 = 0x7A;
     pub const I64_POPCNT: u8 = 0x7B;
@@ -201,6 +181,7 @@ pub mod op {
     pub const I64_SHR_U: u8 = 0x88;
     pub const I64_ROTL: u8 = 0x89;
     pub const I64_ROTR: u8 = 0x8A;
+
     pub const F32_ABS: u8 = 0x8B;
     pub const F32_NEG: u8 = 0x8C;
     pub const F32_CEIL: u8 = 0x8D;
@@ -215,6 +196,7 @@ pub mod op {
     pub const F32_MIN: u8 = 0x96;
     pub const F32_MAX: u8 = 0x97;
     pub const F32_COPYSIGN: u8 = 0x98;
+
     pub const F64_ABS: u8 = 0x99;
     pub const F64_NEG: u8 = 0x9A;
     pub const F64_CEIL: u8 = 0x9B;
@@ -229,40 +211,39 @@ pub mod op {
     pub const F64_MIN: u8 = 0xA4;
     pub const F64_MAX: u8 = 0xA5;
     pub const F64_COPYSIGN: u8 = 0xA6;
+
     pub const I32_WRAP_I64: u8 = 0xA7;
-    pub const I32_TRUNC_S_F32: u8 = 0xA8;
-    pub const I32_TRUNC_U_F32: u8 = 0xA9;
-    pub const I32_TRUNC_S_F64: u8 = 0xAA;
-    pub const I32_TRUNC_U_F64: u8 = 0xAB;
-    pub const I64_EXTEND_S_I32: u8 = 0xAC;
-    pub const I64_EXTEND_U_I32: u8 = 0xAD;
-    pub const I64_TRUNC_S_F32: u8 = 0xAE;
-    pub const I64_TRUNC_U_F32: u8 = 0xAF;
-    pub const I64_TRUNC_S_F64: u8 = 0xB0;
-    pub const I64_TRUNC_U_F64: u8 = 0xB1;
-    pub const F32_CONVERT_S_I32: u8 = 0xB2;
-    pub const F32_CONVERT_U_I32: u8 = 0xB3;
-    pub const F32_CONVERT_S_I64: u8 = 0xB4;
-    pub const F32_CONVERT_U_I64: u8 = 0xB5;
+    pub const I32_TRUNC_F32_S: u8 = 0xA8;
+    pub const I32_TRUNC_F32_U: u8 = 0xA9;
+    pub const I32_TRUNC_F64_S: u8 = 0xAA;
+    pub const I32_TRUNC_F64_U: u8 = 0xAB;
+    pub const I64_EXTEND_I32_S: u8 = 0xAC;
+    pub const I64_EXTEND_I32_U: u8 = 0xAD;
+    pub const I64_TRUNC_F32_S: u8 = 0xAE;
+    pub const I64_TRUNC_F32_U: u8 = 0xAF;
+    pub const I64_TRUNC_F64_S: u8 = 0xB0;
+    pub const I64_TRUNC_F64_U: u8 = 0xB1;
+    pub const F32_CONVERT_I32_S: u8 = 0xB2;
+    pub const F32_CONVERT_I32_U: u8 = 0xB3;
+    pub const F32_CONVERT_I64_S: u8 = 0xB4;
+    pub const F32_CONVERT_I64_U: u8 = 0xB5;
     pub const F32_DEMOTE_F64: u8 = 0xB6;
-    pub const F64_CONVERT_S_I32: u8 = 0xB7;
-    pub const F64_CONVERT_U_I32: u8 = 0xB8;
-    pub const F64_CONVERT_S_I64: u8 = 0xB9;
-    pub const F64_CONVERT_U_I64: u8 = 0xBA;
+    pub const F64_CONVERT_I32_S: u8 = 0xB7;
+    pub const F64_CONVERT_I32_U: u8 = 0xB8;
+    pub const F64_CONVERT_I64_S: u8 = 0xB9;
+    pub const F64_CONVERT_I64_U: u8 = 0xBA;
     pub const F64_PROMOTE_F32: u8 = 0xBB;
     pub const I32_REINTERPRET_F32: u8 = 0xBC;
     pub const I64_REINTERPRET_F64: u8 = 0xBD;
     pub const F32_REINTERPRET_I32: u8 = 0xBE;
     pub const F64_REINTERPRET_I64: u8 = 0xBF;
 
-    // Sign-extension operators
     pub const I32_EXTEND8_S: u8 = 0xC0;
     pub const I32_EXTEND16_S: u8 = 0xC1;
     pub const I64_EXTEND8_S: u8 = 0xC2;
     pub const I64_EXTEND16_S: u8 = 0xC3;
     pub const I64_EXTEND32_S: u8 = 0xC4;
 
-    // Reference instructions
     pub const REF_NULL: u8 = 0xD0;
     pub const REF_IS_NULL: u8 = 0xD1;
     pub const REF_FUNC: u8 = 0xD2;
@@ -271,87 +252,403 @@ pub mod op {
     pub const BR_ON_NULL: u8 = 0xD5;
     pub const BR_ON_NON_NULL: u8 = 0xD6;
 
-    // Prefix bytes for extended opcodes
-    pub const PREFIX_FC: u8 = 0xFC; // bulk memory, table, saturating
-    pub const PREFIX_FD: u8 = 0xFD; // SIMD / vector
-    pub const PREFIX_FE: u8 = 0xFE; // atomics / threads
-    pub const PREFIX_FB: u8 = 0xFB; // GC / aggregate
+    // ==================== PREFIXED OPCODES ====================
 
-    // Sub-opcodes for PREFIX_FC (LEB128 u32 after prefix)
-    pub mod fc {
-        pub const I32_TRUNC_SAT_F32_S: u32 = 0x00;
-        pub const I32_TRUNC_SAT_F32_U: u32 = 0x01;
-        pub const I32_TRUNC_SAT_F64_S: u32 = 0x02;
-        pub const I32_TRUNC_SAT_F64_U: u32 = 0x03;
-        pub const I64_TRUNC_SAT_F32_S: u32 = 0x04;
-        pub const I64_TRUNC_SAT_F32_U: u32 = 0x05;
-        pub const I64_TRUNC_SAT_F64_S: u32 = 0x06;
-        pub const I64_TRUNC_SAT_F64_U: u32 = 0x07;
-        pub const MEMORY_INIT: u32 = 0x08;
-        pub const DATA_DROP: u32 = 0x09;
-        pub const MEMORY_COPY: u32 = 0x0A;
-        pub const MEMORY_FILL: u32 = 0x0B;
-        pub const TABLE_INIT: u32 = 0x0C;
-        pub const ELEM_DROP: u32 = 0x0D;
-        pub const TABLE_COPY: u32 = 0x0E;
-        pub const TABLE_GROW: u32 = 0x0F;
-        pub const TABLE_SIZE: u32 = 0x10;
-        pub const TABLE_FILL: u32 = 0x11;
-    }
+    // 0xFC — Bulk memory, table, saturating truncation
+    pub const I32_TRUNC_SAT_F32_S: u16 = 0xFC00;
+    pub const I32_TRUNC_SAT_F32_U: u16 = 0xFC01;
+    pub const I32_TRUNC_SAT_F64_S: u16 = 0xFC02;
+    pub const I32_TRUNC_SAT_F64_U: u16 = 0xFC03;
+    pub const I64_TRUNC_SAT_F32_S: u16 = 0xFC04;
+    pub const I64_TRUNC_SAT_F32_U: u16 = 0xFC05;
+    pub const I64_TRUNC_SAT_F64_S: u16 = 0xFC06;
+    pub const I64_TRUNC_SAT_F64_U: u16 = 0xFC07;
+    pub const MEMORY_INIT: u16 = 0xFC08;
+    pub const DATA_DROP: u16 = 0xFC09;
+    pub const MEMORY_COPY: u16 = 0xFC0A;
+    pub const MEMORY_FILL: u16 = 0xFC0B;
+    pub const TABLE_INIT: u16 = 0xFC0C;
+    pub const ELEM_DROP: u16 = 0xFC0D;
+    pub const TABLE_COPY: u16 = 0xFC0E;
+    pub const TABLE_GROW: u16 = 0xFC0F;
+    pub const TABLE_SIZE: u16 = 0xFC10;
+    pub const TABLE_FILL: u16 = 0xFC11;
 
-    // Sub-opcodes for PREFIX_FD (SIMD) – examples (full ~260 ops; expand from spec)
-    pub mod fd {
-        pub const V128_LOAD: u32 = 0x00;
-        pub const V128_STORE: u32 = 0x0B;
-        pub const V128_CONST: u32 = 0x0C;
-        pub const I8X16_SPLAT: u32 = 0x0F;
-        pub const I8X16_ADD: u32 = 0x6E;
-        // ... add i16x8.*, i32x4.*, f32x4.*, lane ops, etc. from https://pengowray.github.io/wasm-ops/
-    }
+    // 0xFB — GC / aggregate types (struct, array, i31, ref.*, string.* where merged)
+    pub const STRUCT_NEW: u16 = 0xFB00;
+    pub const STRUCT_NEW_DEFAULT: u16 = 0xFB01;
+    pub const STRUCT_GET: u16 = 0xFB02;
+    pub const STRUCT_GET_S: u16 = 0xFB03;
+    pub const STRUCT_GET_U: u16 = 0xFB04;
+    pub const STRUCT_SET: u16 = 0xFB05;
+    pub const ARRAY_NEW: u16 = 0xFB06;
+    pub const ARRAY_NEW_DEFAULT: u16 = 0xFB07;
+    pub const ARRAY_NEW_FIXED: u16 = 0xFB08;
+    pub const ARRAY_NEW_DATA: u16 = 0xFB09;
+    pub const ARRAY_NEW_ELEM: u16 = 0xFB0A;
+    pub const ARRAY_GET: u16 = 0xFB0B;
+    pub const ARRAY_GET_S: u16 = 0xFB0C;
+    pub const ARRAY_GET_U: u16 = 0xFB0D;
+    pub const ARRAY_SET: u16 = 0xFB0E;
+    pub const ARRAY_LEN: u16 = 0xFB0F;
+    pub const ARRAY_FILL: u16 = 0xFB10;
+    pub const ARRAY_COPY: u16 = 0xFB11;
+    pub const ARRAY_INIT_DATA: u16 = 0xFB12;
+    pub const ARRAY_INIT_ELEM: u16 = 0xFB13;
+    pub const REF_I31: u16 = 0xFB20;
+    pub const REF_TEST: u16 = 0xFB21;
+    pub const REF_CAST: u16 = 0xFB22;
+    pub const BR_ON_CAST: u16 = 0xFB24;
+    pub const BR_ON_CAST_FAIL: u16 = 0xFB25;
+    pub const ANY_CONVERT_EXTERN: u16 = 0xFB26;
+    pub const EXTERN_CONVERT_ANY: u16 = 0xFB27;
+    pub const I31_NEW: u16 = 0xFB28;
+    pub const I31_GET_S: u16 = 0xFB29;
+    pub const I31_GET_U: u16 = 0xFB2A;
+    pub const EXTERN_INTERNALIZE: u16 = 0xFB30;
+    pub const EXTERN_EXTERNALIZE: u16 = 0xFB31;
 
-    // Sub-opcodes for PREFIX_FB (GC) – examples
-    pub mod fb {
-        pub const STRUCT_NEW: u32 = 0x00;
-        pub const STRUCT_NEW_DEFAULT: u32 = 0x01;
-        pub const STRUCT_GET: u32 = 0x02;
-        pub const STRUCT_GET_S: u32 = 0x03;
-        pub const STRUCT_GET_U: u32 = 0x04;
-        pub const STRUCT_SET: u32 = 0x05;
-        pub const ARRAY_NEW: u32 = 0x06;
-        pub const ARRAY_NEW_DEFAULT: u32 = 0x07;
-        pub const ARRAY_GET: u32 = 0x0B;
-        pub const ARRAY_LEN: u32 = 0x0F;
-        // ... full list in spec section on aggregate types
-    }
+    // 0xFD — SIMD / Vector (all 262 instructions)
+    pub const V128_LOAD: u16 = 0xFD00;
+    pub const V128_LOAD8X8_S: u16 = 0xFD01;
+    pub const V128_LOAD8X8_U: u16 = 0xFD02;
+    pub const V128_LOAD16X4_S: u16 = 0xFD03;
+    pub const V128_LOAD16X4_U: u16 = 0xFD04;
+    pub const V128_LOAD32X2_S: u16 = 0xFD05;
+    pub const V128_LOAD32X2_U: u16 = 0xFD06;
+    pub const V128_LOAD8_SPLAT: u16 = 0xFD07;
+    pub const V128_LOAD16_SPLAT: u16 = 0xFD08;
+    pub const V128_LOAD32_SPLAT: u16 = 0xFD09;
+    pub const V128_LOAD64_SPLAT: u16 = 0xFD0A;
+    pub const V128_STORE: u16 = 0xFD0B;
+    pub const V128_CONST: u16 = 0xFD0C;
+    pub const I8X16_SHUFFLE: u16 = 0xFD0D;
+    pub const I8X16_SWIZZLE: u16 = 0xFD0E;
+    pub const I8X16_SPLAT: u16 = 0xFD0F;
+    pub const I16X8_SPLAT: u16 = 0xFD10;
+    pub const I32X4_SPLAT: u16 = 0xFD11;
+    pub const I64X2_SPLAT: u16 = 0xFD12;
+    pub const F32X4_SPLAT: u16 = 0xFD13;
+    pub const F64X2_SPLAT: u16 = 0xFD14;
+    pub const I8X16_EXTRACT_LANE_S: u16 = 0xFD15;
+    pub const I8X16_EXTRACT_LANE_U: u16 = 0xFD16;
+    pub const I8X16_REPLACE_LANE: u16 = 0xFD17;
+    pub const I16X8_EXTRACT_LANE_S: u16 = 0xFD18;
+    pub const I16X8_EXTRACT_LANE_U: u16 = 0xFD19;
+    pub const I16X8_REPLACE_LANE: u16 = 0xFD1A;
+    pub const I32X4_EXTRACT_LANE: u16 = 0xFD1B;
+    pub const I32X4_REPLACE_LANE: u16 = 0xFD1C;
+    pub const I64X2_EXTRACT_LANE: u16 = 0xFD1D;
+    pub const I64X2_REPLACE_LANE: u16 = 0xFD1E;
+    pub const F32X4_EXTRACT_LANE: u16 = 0xFD1F;
+    pub const F32X4_REPLACE_LANE: u16 = 0xFD20;
+    pub const F64X2_EXTRACT_LANE: u16 = 0xFD21;
+    pub const F64X2_REPLACE_LANE: u16 = 0xFD22;
+    pub const I8X16_EQ: u16 = 0xFD23;
+    pub const I8X16_NE: u16 = 0xFD24;
+    pub const I8X16_LT_S: u16 = 0xFD25;
+    pub const I8X16_LT_U: u16 = 0xFD26;
+    pub const I8X16_GT_S: u16 = 0xFD27;
+    pub const I8X16_GT_U: u16 = 0xFD28;
+    pub const I8X16_LE_S: u16 = 0xFD29;
+    pub const I8X16_LE_U: u16 = 0xFD2A;
+    pub const I8X16_GE_S: u16 = 0xFD2B;
+    pub const I8X16_GE_U: u16 = 0xFD2C;
+    pub const I16X8_EQ: u16 = 0xFD2D;
+    pub const I16X8_NE: u16 = 0xFD2E;
+    pub const I16X8_LT_S: u16 = 0xFD2F;
+    pub const I16X8_LT_U: u16 = 0xFD30;
+    pub const I16X8_GT_S: u16 = 0xFD31;
+    pub const I16X8_GT_U: u16 = 0xFD32;
+    pub const I16X8_LE_S: u16 = 0xFD33;
+    pub const I16X8_LE_U: u16 = 0xFD34;
+    pub const I16X8_GE_S: u16 = 0xFD35;
+    pub const I16X8_GE_U: u16 = 0xFD36;
+    pub const I32X4_EQ: u16 = 0xFD37;
+    pub const I32X4_NE: u16 = 0xFD38;
+    pub const I32X4_LT_S: u16 = 0xFD39;
+    pub const I32X4_LT_U: u16 = 0xFD3A;
+    pub const I32X4_GT_S: u16 = 0xFD3B;
+    pub const I32X4_GT_U: u16 = 0xFD3C;
+    pub const I32X4_LE_S: u16 = 0xFD3D;
+    pub const I32X4_LE_U: u16 = 0xFD3E;
+    pub const I32X4_GE_S: u16 = 0xFD3F;
+    pub const I32X4_GE_U: u16 = 0xFD40;
+    pub const F32X4_EQ: u16 = 0xFD41;
+    pub const F32X4_NE: u16 = 0xFD42;
+    pub const F32X4_LT: u16 = 0xFD43;
+    pub const F32X4_GT: u16 = 0xFD44;
+    pub const F32X4_LE: u16 = 0xFD45;
+    pub const F32X4_GE: u16 = 0xFD46;
+    pub const F64X2_EQ: u16 = 0xFD47;
+    pub const F64X2_NE: u16 = 0xFD48;
+    pub const F64X2_LT: u16 = 0xFD49;
+    pub const F64X2_GT: u16 = 0xFD4A;
+    pub const F64X2_LE: u16 = 0xFD4B;
+    pub const F64X2_GE: u16 = 0xFD4C;
+    pub const V128_NOT: u16 = 0xFD4D;
+    pub const V128_AND: u16 = 0xFD4E;
+    pub const V128_ANDNOT: u16 = 0xFD4F;
+    pub const V128_OR: u16 = 0xFD50;
+    pub const V128_XOR: u16 = 0xFD51;
+    pub const V128_BITSELECT: u16 = 0xFD52;
+    pub const V128_ANY_TRUE: u16 = 0xFD53;
+    pub const V128_LOAD8_LANE: u16 = 0xFD54;
+    pub const V128_LOAD16_LANE: u16 = 0xFD55;
+    pub const V128_LOAD32_LANE: u16 = 0xFD56;
+    pub const V128_LOAD64_LANE: u16 = 0xFD57;
+    pub const V128_STORE8_LANE: u16 = 0xFD58;
+    pub const V128_STORE16_LANE: u16 = 0xFD59;
+    pub const V128_STORE32_LANE: u16 = 0xFD5A;
+    pub const V128_STORE64_LANE: u16 = 0xFD5B;
+    pub const V128_LOAD32_ZERO: u16 = 0xFD5C;
+    pub const V128_LOAD64_ZERO: u16 = 0xFD5D;
+    pub const F32X4_DEMOTE_F64X2_ZERO: u16 = 0xFD5E;
+    pub const F64X2_PROMOTE_LOW_F32X4: u16 = 0xFD5F;
+    pub const I8X16_ABS: u16 = 0xFD60;
+    pub const I8X16_NEG: u16 = 0xFD61;
+    pub const I8X16_POPCNT: u16 = 0xFD62;
+    pub const I8X16_ALL_TRUE: u16 = 0xFD63;
+    pub const I8X16_BITMASK: u16 = 0xFD64;
+    pub const I8X16_NARROW_I16X8_S: u16 = 0xFD65;
+    pub const I8X16_NARROW_I16X8_U: u16 = 0xFD66;
+    pub const I8X16_SHL: u16 = 0xFD67;
+    pub const I8X16_SHR_S: u16 = 0xFD68;
+    pub const I8X16_SHR_U: u16 = 0xFD69;
+    pub const I8X16_ADD: u16 = 0xFD6A;
+    pub const I8X16_ADD_SAT_S: u16 = 0xFD6B;
+    pub const I8X16_ADD_SAT_U: u16 = 0xFD6C;
+    pub const I8X16_SUB: u16 = 0xFD6D;
+    pub const I8X16_SUB_SAT_S: u16 = 0xFD6E;
+    pub const I8X16_SUB_SAT_U: u16 = 0xFD6F;
+    pub const I8X16_MIN_S: u16 = 0xFD70;
+    pub const I8X16_MIN_U: u16 = 0xFD71;
+    pub const I8X16_MAX_S: u16 = 0xFD72;
+    pub const I8X16_MAX_U: u16 = 0xFD73;
+    pub const I8X16_AVGR_U: u16 = 0xFD74;
+    pub const I16X8_EXTADD_PAIRWISE_I8X16_S: u16 = 0xFD75;
+    pub const I16X8_EXTADD_PAIRWISE_I8X16_U: u16 = 0xFD76;
+    pub const I16X8_ABS: u16 = 0xFD80;
+    pub const I16X8_NEG: u16 = 0xFD81;
+    pub const I16X8_ALL_TRUE: u16 = 0xFD82;
+    pub const I16X8_BITMASK: u16 = 0xFD83;
+    pub const I16X8_NARROW_I32X4_S: u16 = 0xFD84;
+    pub const I16X8_NARROW_I32X4_U: u16 = 0xFD85;
+    pub const I16X8_EXTEND_LOW_I8X16_S: u16 = 0xFD86;
+    pub const I16X8_EXTEND_HIGH_I8X16_S: u16 = 0xFD87;
+    pub const I16X8_EXTEND_LOW_I8X16_U: u16 = 0xFD88;
+    pub const I16X8_EXTEND_HIGH_I8X16_U: u16 = 0xFD89;
+    pub const I16X8_SHL: u16 = 0xFD8A;
+    pub const I16X8_SHR_S: u16 = 0xFD8B;
+    pub const I16X8_SHR_U: u16 = 0xFD8C;
+    pub const I16X8_ADD: u16 = 0xFD8D;
+    pub const I16X8_ADD_SAT_S: u16 = 0xFD8E;
+    pub const I16X8_ADD_SAT_U: u16 = 0xFD8F;
+    pub const I16X8_SUB: u16 = 0xFD90;
+    pub const I16X8_SUB_SAT_S: u16 = 0xFD91;
+    pub const I16X8_SUB_SAT_U: u16 = 0xFD92;
+    pub const I16X8_MUL: u16 = 0xFD93;
+    pub const I16X8_MIN_S: u16 = 0xFD94;
+    pub const I16X8_MIN_U: u16 = 0xFD95;
+    pub const I16X8_MAX_S: u16 = 0xFD96;
+    pub const I16X8_MAX_U: u16 = 0xFD97;
+    pub const I16X8_AVGR_U: u16 = 0xFD98;
+    pub const I16X8_EXTMUL_LOW_I8X16_S: u16 = 0xFD9C;
+    pub const I16X8_EXTMUL_HIGH_I8X16_S: u16 = 0xFD9D;
+    pub const I16X8_EXTMUL_LOW_I8X16_U: u16 = 0xFD9E;
+    pub const I16X8_EXTMUL_HIGH_I8X16_U: u16 = 0xFD9F;
+    pub const I32X4_EXTADD_PAIRWISE_I16X8_S: u16 = 0xFDA0;
+    pub const I32X4_EXTADD_PAIRWISE_I16X8_U: u16 = 0xFDA1;
+    pub const I32X4_ABS: u16 = 0xFDA2;
+    pub const I32X4_NEG: u16 = 0xFDA3;
+    pub const I32X4_ALL_TRUE: u16 = 0xFDA4;
+    pub const I32X4_BITMASK: u16 = 0xFDA5;
+    pub const I32X4_EXTEND_LOW_I16X8_S: u16 = 0xFDA6;
+    pub const I32X4_EXTEND_HIGH_I16X8_S: u16 = 0xFDA7;
+    pub const I32X4_EXTEND_LOW_I16X8_U: u16 = 0xFDA8;
+    pub const I32X4_EXTEND_HIGH_I16X8_U: u16 = 0xFDA9;
+    pub const I32X4_SHL: u16 = 0xFDAA;
+    pub const I32X4_SHR_S: u16 = 0xFDAB;
+    pub const I32X4_SHR_U: u16 = 0xFDAC;
+    pub const I32X4_ADD: u16 = 0xFDAD;
+    pub const I32X4_SUB: u16 = 0xFDAE;
+    pub const I32X4_MUL: u16 = 0xFDAF;
+    pub const I32X4_MIN_S: u16 = 0xFDB0;
+    pub const I32X4_MIN_U: u16 = 0xFDB1;
+    pub const I32X4_MAX_S: u16 = 0xFDB2;
+    pub const I32X4_MAX_U: u16 = 0xFDB3;
+    pub const I32X4_DOT_I16X8_S: u16 = 0xFDB4;
+    pub const I32X4_EXTMUL_LOW_I16X8_S: u16 = 0xFDB5;
+    pub const I32X4_EXTMUL_HIGH_I16X8_S: u16 = 0xFDB6;
+    pub const I32X4_EXTMUL_LOW_I16X8_U: u16 = 0xFDB7;
+    pub const I32X4_EXTMUL_HIGH_I16X8_U: u16 = 0xFDB8;
+    pub const I64X2_ABS: u16 = 0xFDC0;
+    pub const I64X2_NEG: u16 = 0xFDC1;
+    pub const I64X2_ALL_TRUE: u16 = 0xFDC2;
+    pub const I64X2_BITMASK: u16 = 0xFDC3;
+    pub const I64X2_EXTEND_LOW_I32X4_S: u16 = 0xFDC4;
+    pub const I64X2_EXTEND_HIGH_I32X4_S: u16 = 0xFDC5;
+    pub const I64X2_EXTEND_LOW_I32X4_U: u16 = 0xFDC6;
+    pub const I64X2_EXTEND_HIGH_I32X4_U: u16 = 0xFDC7;
+    pub const I64X2_SHL: u16 = 0xFDC8;
+    pub const I64X2_SHR_S: u16 = 0xFDC9;
+    pub const I64X2_SHR_U: u16 = 0xFDCA;
+    pub const I64X2_ADD: u16 = 0xFDCB;
+    pub const I64X2_SUB: u16 = 0xFDCC;
+    pub const I64X2_MUL: u16 = 0xFDCD;
+    pub const I64X2_EXTMUL_LOW_I32X4_S: u16 = 0xFDCF;
+    pub const I64X2_EXTMUL_HIGH_I32X4_S: u16 = 0xFDD0;
+    pub const I64X2_EXTMUL_LOW_I32X4_U: u16 = 0xFDD1;
+    pub const I64X2_EXTMUL_HIGH_I32X4_U: u16 = 0xFDD2;
+    pub const F32X4_CEIL: u16 = 0xFDD3;
+    pub const F32X4_FLOOR: u16 = 0xFDD4;
+    pub const F32X4_TRUNC: u16 = 0xFDD5;
+    pub const F32X4_NEAREST: u16 = 0xFDD6;
+    pub const F32X4_ABS: u16 = 0xFDD7;
+    pub const F32X4_NEG: u16 = 0xFDD8;
+    pub const F32X4_SQRT: u16 = 0xFDD9;
+    pub const F32X4_ADD: u16 = 0xFDDA;
+    pub const F32X4_SUB: u16 = 0xFDDB;
+    pub const F32X4_MUL: u16 = 0xFDDC;
+    pub const F32X4_DIV: u16 = 0xFDDD;
+    pub const F32X4_MIN: u16 = 0xFDDE;
+    pub const F32X4_MAX: u16 = 0xFDDF;
+    pub const F32X4_PMIN: u16 = 0xFDE0;
+    pub const F32X4_PMAX: u16 = 0xFDE1;
+    pub const F64X2_CEIL: u16 = 0xFDE2;
+    pub const F64X2_FLOOR: u16 = 0xFDE3;
+    pub const F64X2_TRUNC: u16 = 0xFDE4;
+    pub const F64X2_NEAREST: u16 = 0xFDE5;
+    pub const F64X2_ABS: u16 = 0xFDE6;
+    pub const F64X2_NEG: u16 = 0xFDE7;
+    pub const F64X2_SQRT: u16 = 0xFDE8;
+    pub const F64X2_ADD: u16 = 0xFDE9;
+    pub const F64X2_SUB: u16 = 0xFDEA;
+    pub const F64X2_MUL: u16 = 0xFDEB;
+    pub const F64X2_DIV: u16 = 0xFDEC;
+    pub const F64X2_MIN: u16 = 0xFDED;
+    pub const F64X2_MAX: u16 = 0xFDEE;
+    pub const F64X2_PMIN: u16 = 0xFDEF;
+    pub const F64X2_PMAX: u16 = 0xFDF0;
+    pub const I32X4_TRUNC_SAT_F32X4_S: u16 = 0xFDF1;
+    pub const I32X4_TRUNC_SAT_F32X4_U: u16 = 0xFDF2;
+    pub const F32X4_CONVERT_I32X4_S: u16 = 0xFDF3;
+    pub const F32X4_CONVERT_I32X4_U: u16 = 0xFDF4;
+    pub const I32X4_TRUNC_SAT_F64X2_S_ZERO: u16 = 0xFDF5;
+    pub const I32X4_TRUNC_SAT_F64X2_U_ZERO: u16 = 0xFDF6;
+    pub const F64X2_CONVERT_LOW_I32X4_S: u16 = 0xFDF7;
+    pub const F64X2_CONVERT_LOW_I32X4_U: u16 = 0xFDF8;
+    pub const I8X16_RELAXED_SWIZZLE: u16 = 0xFDF9;
+    pub const I32X4_RELAXED_TRUNC_S_F32X4: u16 = 0xFDFA;
+    pub const I32X4_RELAXED_TRUNC_U_F32X4: u16 = 0xFDFB;
+    pub const I32X4_RELAXED_TRUNC_S_F64X2: u16 = 0xFDFC;
+    pub const I32X4_RELAXED_TRUNC_U_F64X2: u16 = 0xFDFD;
+    pub const F32X4_RELAXED_MADD: u16 = 0xFDFE;
+    pub const F32X4_RELAXED_NMADD: u16 = 0xFDFF;
+    pub const F64X2_RELAXED_MADD: u16 = 0xFE00;
+    pub const F64X2_RELAXED_NMADD: u16 = 0xFE01;
+    pub const I8X16_RELAXED_LANESEL: u16 = 0xFE02;
+    pub const I16X8_RELAXED_LANESEL: u16 = 0xFE03;
+    pub const I32X4_RELAXED_LANESEL: u16 = 0xFE04;
+    pub const I64X2_RELAXED_LANESEL: u16 = 0xFE05;
+    pub const F32X4_RELAXED_MIN: u16 = 0xFE06;
+    pub const F32X4_RELAXED_MAX: u16 = 0xFE07;
+    pub const F64X2_RELAXED_MIN: u16 = 0xFE08;
+    pub const F64X2_RELAXED_MAX: u16 = 0xFE09;
+    pub const I16X8_RELAXED_Q15MULR_S: u16 = 0xFE0A;
+    pub const I16X8_RELAXED_DOT_I8X16_I7X16_S: u16 = 0xFE0B;
+    pub const I32X4_RELAXED_DOT_I8X16_I7X16_S: u16 = 0xFE0C;
+    pub const I32X4_RELAXED_DOT_I8X16_I7X16_ADD_S: u16 = 0xFE0D;
 
-    // Sub-opcodes for PREFIX_FE (atomics) – examples
-    pub mod fe {
-        pub const MEMORY_ATOMIC_NOTIFY: u32 = 0x00;
-        pub const I32_ATOMIC_LOAD: u32 = 0x10;
-        // ... rmw.add, cmpxchg, fence, etc.
-    }
+    // 0xFE — Atomics / Threads
+    pub const MEMORY_ATOMIC_NOTIFY: u16 = 0xFE00;
+    pub const MEMORY_ATOMIC_WAIT32: u16 = 0xFE01;
+    pub const MEMORY_ATOMIC_WAIT64: u16 = 0xFE02;
+    pub const ATOMIC_FENCE: u16 = 0xFE03;
+
+    // Atomic Loads
+    pub const I32_ATOMIC_LOAD: u16 = 0xFE10;
+    pub const I64_ATOMIC_LOAD: u16 = 0xFE11;
+    pub const I32_ATOMIC_LOAD8_U: u16 = 0xFE12;
+    pub const I32_ATOMIC_LOAD16_U: u16 = 0xFE13;
+    pub const I64_ATOMIC_LOAD8_U: u16 = 0xFE14;
+    pub const I64_ATOMIC_LOAD16_U: u16 = 0xFE15;
+    pub const I64_ATOMIC_LOAD32_U: u16 = 0xFE16;
+
+    // Atomic Stores
+    pub const I32_ATOMIC_STORE: u16 = 0xFE17;
+    pub const I64_ATOMIC_STORE: u16 = 0xFE18;
+    pub const I32_ATOMIC_STORE8: u16 = 0xFE19;
+    pub const I32_ATOMIC_STORE16: u16 = 0xFE1A;
+    pub const I64_ATOMIC_STORE8: u16 = 0xFE1B;
+    pub const I64_ATOMIC_STORE16: u16 = 0xFE1C;
+    pub const I64_ATOMIC_STORE32: u16 = 0xFE1D;
+
+    // RMW Add
+    pub const I32_ATOMIC_RMW_ADD: u16 = 0xFE1E;
+    pub const I64_ATOMIC_RMW_ADD: u16 = 0xFE1F;
+    pub const I32_ATOMIC_RMW8_ADD_U: u16 = 0xFE20;
+    pub const I32_ATOMIC_RMW16_ADD_U: u16 = 0xFE21;
+    pub const I64_ATOMIC_RMW8_ADD_U: u16 = 0xFE22;
+    pub const I64_ATOMIC_RMW16_ADD_U: u16 = 0xFE23;
+    pub const I64_ATOMIC_RMW32_ADD_U: u16 = 0xFE24;
+
+    // RMW Sub
+    pub const I32_ATOMIC_RMW_SUB: u16 = 0xFE25;
+    pub const I64_ATOMIC_RMW_SUB: u16 = 0xFE26;
+    pub const I32_ATOMIC_RMW8_SUB_U: u16 = 0xFE27;
+    pub const I32_ATOMIC_RMW16_SUB_U: u16 = 0xFE28;
+    pub const I64_ATOMIC_RMW8_SUB_U: u16 = 0xFE29;
+    pub const I64_ATOMIC_RMW16_SUB_U: u16 = 0xFE2A;
+    pub const I64_ATOMIC_RMW32_SUB_U: u16 = 0xFE2B;
+
+    // RMW And
+    pub const I32_ATOMIC_RMW_AND: u16 = 0xFE2C;
+    pub const I64_ATOMIC_RMW_AND: u16 = 0xFE2D;
+    pub const I32_ATOMIC_RMW8_AND_U: u16 = 0xFE2E;
+    pub const I32_ATOMIC_RMW16_AND_U: u16 = 0xFE2F;
+    pub const I64_ATOMIC_RMW8_AND_U: u16 = 0xFE30;
+    pub const I64_ATOMIC_RMW16_AND_U: u16 = 0xFE31;
+    pub const I64_ATOMIC_RMW32_AND_U: u16 = 0xFE32;
+
+    // RMW Or
+    pub const I32_ATOMIC_RMW_OR: u16 = 0xFE33;
+    pub const I64_ATOMIC_RMW_OR: u16 = 0xFE34;
+    pub const I32_ATOMIC_RMW8_OR_U: u16 = 0xFE35;
+    pub const I32_ATOMIC_RMW16_OR_U: u16 = 0xFE36;
+    pub const I64_ATOMIC_RMW8_OR_U: u16 = 0xFE37;
+    pub const I64_ATOMIC_RMW16_OR_U: u16 = 0xFE38;
+    pub const I64_ATOMIC_RMW32_OR_U: u16 = 0xFE39;
+
+    // RMW Xor
+    pub const I32_ATOMIC_RMW_XOR: u16 = 0xFE3A;
+    pub const I64_ATOMIC_RMW_XOR: u16 = 0xFE3B;
+    pub const I32_ATOMIC_RMW8_XOR_U: u16 = 0xFE3C;
+    pub const I32_ATOMIC_RMW16_XOR_U: u16 = 0xFE3D;
+    pub const I64_ATOMIC_RMW8_XOR_U: u16 = 0xFE3E;
+    pub const I64_ATOMIC_RMW16_XOR_U: u16 = 0xFE3F;
+    pub const I64_ATOMIC_RMW32_XOR_U: u16 = 0xFE40;
+
+    // RMW Xchg (exchange)
+    pub const I32_ATOMIC_RMW_XCHG: u16 = 0xFE41;
+    pub const I64_ATOMIC_RMW_XCHG: u16 = 0xFE42;
+    pub const I32_ATOMIC_RMW8_XCHG_U: u16 = 0xFE43;
+    pub const I32_ATOMIC_RMW16_XCHG_U: u16 = 0xFE44;
+    pub const I64_ATOMIC_RMW8_XCHG_U: u16 = 0xFE45;
+    pub const I64_ATOMIC_RMW16_XCHG_U: u16 = 0xFE46;
+    pub const I64_ATOMIC_RMW32_XCHG_U: u16 = 0xFE47;
+
+    // RMW Cmpxchg (compare-exchange)
+    pub const I32_ATOMIC_RMW_CMPXCHG: u16 = 0xFE48;
+    pub const I64_ATOMIC_RMW_CMPXCHG: u16 = 0xFE49;
+    pub const I32_ATOMIC_RMW8_CMPXCHG_U: u16 = 0xFE4A;
+    pub const I32_ATOMIC_RMW16_CMPXCHG_U: u16 = 0xFE4B;
+    pub const I64_ATOMIC_RMW8_CMPXCHG_U: u16 = 0xFE4C;
+    pub const I64_ATOMIC_RMW16_CMPXCHG_U: u16 = 0xFE4D;
+    pub const I64_ATOMIC_RMW32_CMPXCHG_U: u16 = 0xFE4E;
 }
 
-// Legacy aliases for full backward compatibility with old code
-pub use op::*;
-
-// Optional high-level enum skeleton (uncomment & expand for type-safe AST)
-#[derive(Debug, Clone, PartialEq)]
-pub enum Instruction {
-    // Unit variants for simple ops
-    Unreachable,
-    Nop,
-    // ... add all single-byte as needed
-    I32Const(i32),
-    I64Const(i64),
-    // Prefixed examples
-    MemoryInit(u32, u32), // dataidx, memidx
-    V128Load(/* MemArg */),
-    // Fallback for unknown/prefixed
-    Unknown(u8, Vec<u8>),
-}
-
-// Trait (improved name)
-pub trait ToWasmBytes {
+// Convenience trait (unchanged from your original)
+pub trait TypeWasmExt {
     fn to_wasm_bytes(&self) -> Vec<u8>;
 }

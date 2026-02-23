@@ -1,6 +1,6 @@
 [package]
 name = "webassembly"
-version = "0.9.0"
+version = "0.9.1"
 authors = ["Richard Anaya"]
 edition = "2024"
 description = "a library for working with WebAssembly"
