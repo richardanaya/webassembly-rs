@@ -1,8 +1,8 @@
 [package]
 name = "webassembly"
-version = "0.8.2"
+version = "0.9.0"
 authors = ["Richard Anaya"]
-edition = "2018"
+edition = "2024"
 description = "a library for working with WebAssembly"
 license = "MIT OR Apache-2.0"
 categories = ["wasm", "no-std"]
