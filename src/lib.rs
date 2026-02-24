@@ -2,6 +2,7 @@
 //! https://webassembly.github.io/spec/core/bikeshed/
 //! 100 % complete — no placeholders, every opcode listed.
 #![no_std]
+#![allow(non_camel_case_types)]
 extern crate alloc;
 use alloc::string::{String, ToString};
 use alloc::vec;
@@ -701,6 +702,7 @@ impl TypeWasmExt for f64 {
 }
 
 // LEB128 decoding and encoding
+#[allow(dead_code)]
 mod leb {
     use alloc::vec::Vec;
 
@@ -2644,7 +2646,7 @@ fn parse_section(data: &[u8], id: u8) -> Result<Section, &'static str> {
         DATA => {
             let count = leb::u32(data, &mut pos)? as usize;
             let mut datas = Vec::with_capacity(count);
-            for i in 0..count {
+            for _i in 0..count {
                 let flags = leb::u32(data, &mut pos)?;
                 let mode = if flags == 0 {
                     // Active with implicit memory 0
