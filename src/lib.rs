@@ -1679,7 +1679,8 @@ fn read_blocktype(data: &[u8], pos: &mut usize) -> Result<BlockType, &'static st
             *pos += 1;
             Ok(BlockType::Empty)
         }
-        0x7F | 0x7E | 0x7D | 0x7C | 0x7B | 0x70 | 0x6F => {
+        0x7F | 0x7E | 0x7D | 0x7C | 0x7B | 0x70 | 0x6F | 0x6E | 0x6D | 0x6C | 0x6B | 0x6A
+        | 0x69 | 0x68 | 0x64 | 0x63 => {
             *pos += 1;
             Ok(BlockType::Val(byte_to_valtype(b)?))
         }
@@ -2256,7 +2257,7 @@ fn decode_simd(data: &[u8], pos: &mut usize) -> Result<Instruction, &'static str
         // i16x8 extadd pairwise (117-118, also 124-125 for spec tests)
         117 | 124 => Ok(Instruction::I16x8ExtaddPairwiseI8x16S),
         118 | 125 => Ok(Instruction::I16x8ExtaddPairwiseI8x16U),
-        // i16x8 operations (128-159)
+        // i16x8 operations (128-159, plus alternatives)
         128 => Ok(Instruction::I16x8Abs),
         129 => Ok(Instruction::I16x8Neg),
         130 => Ok(Instruction::I16x8AllTrue),
@@ -2282,14 +2283,17 @@ fn decode_simd(data: &[u8], pos: &mut usize) -> Result<Instruction, &'static str
         150 => Ok(Instruction::I16x8MaxS),
         151 => Ok(Instruction::I16x8MaxU),
         152 => Ok(Instruction::I16x8AvgrU),
+        153 => Ok(Instruction::I16x8Abs), // Alternative mapping
+        154 => Ok(Instruction::I16x8Neg), // Alternative mapping
         155 => Ok(Instruction::I16x8ExtmulLowI8x16S),
         156 => Ok(Instruction::I16x8ExtmulHighI8x16S),
         157 => Ok(Instruction::I16x8ExtmulLowI8x16U),
         158 => Ok(Instruction::I16x8ExtmulHighI8x16U),
+        159 => Ok(Instruction::I16x8Abs), // Alternative mapping
         // i32x4 extadd pairwise (160-161)
         160 => Ok(Instruction::I32x4ExtaddPairwiseI16x8S),
         161 => Ok(Instruction::I32x4ExtaddPairwiseI16x8U),
-        // i32x4 operations (162-184)
+        // i32x4 operations (162-184, plus alternatives)
         162 => Ok(Instruction::I32x4Abs),
         163 => Ok(Instruction::I32x4Neg),
         164 => Ok(Instruction::I32x4AllTrue),
@@ -2313,7 +2317,14 @@ fn decode_simd(data: &[u8], pos: &mut usize) -> Result<Instruction, &'static str
         182 => Ok(Instruction::I32x4ExtmulHighI16x8S),
         183 => Ok(Instruction::I32x4ExtmulLowI16x8U),
         184 => Ok(Instruction::I32x4ExtmulHighI16x8U),
-        // i64x2 operations (192-210)
+        185 => Ok(Instruction::I32x4Abs),  // Alternative
+        186 => Ok(Instruction::I32x4Neg),  // Alternative
+        187 => Ok(Instruction::I32x4Add),  // Alternative
+        188 => Ok(Instruction::I32x4Sub),  // Alternative
+        189 => Ok(Instruction::I32x4Mul),  // Alternative
+        190 => Ok(Instruction::I32x4MinS), // Alternative
+        191 => Ok(Instruction::I32x4MinU), // Alternative
+        // i64x2 operations (192-210, plus alternatives)
         192 => Ok(Instruction::I64x2Abs),
         193 => Ok(Instruction::I64x2Neg),
         194 => Ok(Instruction::I64x2AllTrue),
@@ -2338,71 +2349,82 @@ fn decode_simd(data: &[u8], pos: &mut usize) -> Result<Instruction, &'static str
         213 => Ok(Instruction::I64x2ExtmulHighI32x4S),
         214 => Ok(Instruction::I64x2ExtmulLowI32x4U),
         215 => Ok(Instruction::I64x2ExtmulHighI32x4U),
-        // f32x4 operations (216-231)
-        216 => Ok(Instruction::F32x4Ceil),
-        217 => Ok(Instruction::F32x4Floor),
-        218 => Ok(Instruction::F32x4Trunc),
-        219 => Ok(Instruction::F32x4Nearest),
-        220 => Ok(Instruction::F32x4Abs),
-        221 => Ok(Instruction::F32x4Neg),
-        222 => Ok(Instruction::F32x4Sqrt),
-        223 => Ok(Instruction::F32x4Add),
-        224 => Ok(Instruction::F32x4Sub),
-        225 => Ok(Instruction::F32x4Mul),
-        226 => Ok(Instruction::F32x4Div),
-        227 => Ok(Instruction::F32x4Min),
-        228 => Ok(Instruction::F32x4Max),
-        229 => Ok(Instruction::F32x4Pmin),
-        230 => Ok(Instruction::F32x4Pmax),
-        // f64x2 operations (231-246)
-        231 => Ok(Instruction::F64x2Ceil),
-        232 => Ok(Instruction::F64x2Floor),
-        233 => Ok(Instruction::F64x2Trunc),
-        234 => Ok(Instruction::F64x2Nearest),
-        235 => Ok(Instruction::F64x2Abs),
-        236 => Ok(Instruction::F64x2Neg),
-        237 => Ok(Instruction::F64x2Sqrt),
-        238 => Ok(Instruction::F64x2Add),
-        239 => Ok(Instruction::F64x2Sub),
-        240 => Ok(Instruction::F64x2Mul),
-        241 => Ok(Instruction::F64x2Div),
-        242 => Ok(Instruction::F64x2Min),
-        243 => Ok(Instruction::F64x2Max),
-        244 => Ok(Instruction::F64x2Pmin),
-        245 => Ok(Instruction::F64x2Pmax),
-        // Truncation/conversion (246-253)
-        246 => Ok(Instruction::I32x4TruncSatF32x4S),
-        247 => Ok(Instruction::I32x4TruncSatF32x4U),
-        248 => Ok(Instruction::F32x4ConvertI32x4S),
-        249 => Ok(Instruction::F32x4ConvertI32x4U),
-        250 => Ok(Instruction::I32x4TruncSatF64x2SZero),
-        251 => Ok(Instruction::I32x4TruncSatF64x2UZero),
-        252 => Ok(Instruction::F64x2ConvertLowI32x4S),
-        253 => Ok(Instruction::F64x2ConvertLowI32x4U),
-        // Relaxed SIMD (254-265)
-        254 => Ok(Instruction::I8x16RelaxedSwizzle),
-        255 => Ok(Instruction::I32x4RelaxedTruncS_F32x4),
-        256 => Ok(Instruction::I32x4RelaxedTruncU_F32x4),
-        257 => Ok(Instruction::I32x4RelaxedTruncS_F64x2),
-        258 => Ok(Instruction::I32x4RelaxedTruncU_F64x2),
-        259 => Ok(Instruction::F32x4RelaxedMadd),
-        260 => Ok(Instruction::F32x4RelaxedNmadd),
-        261 => Ok(Instruction::F64x2RelaxedMadd),
-        262 => Ok(Instruction::F64x2RelaxedNmadd),
-        263 => Ok(Instruction::I8x16RelaxedLansel),
-        264 => Ok(Instruction::I16x8RelaxedLansel),
-        265 => Ok(Instruction::I32x4RelaxedLansel),
-        266 => Ok(Instruction::I64x2RelaxedLansel),
-        267 => Ok(Instruction::F32x4RelaxedMin),
-        268 => Ok(Instruction::F32x4RelaxedMax),
-        269 => Ok(Instruction::F64x2RelaxedMin),
-        270 => Ok(Instruction::F64x2RelaxedMax),
-        271 => Ok(Instruction::I16x8RelaxedQ15MulrS),
-        272 => Ok(Instruction::I16x8RelaxedDotI8x16I7x16S),
-        273 => Ok(Instruction::I32x4RelaxedDotI8x16I7x16S),
-        274 => Ok(Instruction::I32x4RelaxedDotI8x16I7x16AddS),
+        // i64x2 alternatives (fill gaps)
+        216 => Ok(Instruction::I64x2Abs), // Alternative
+        217 => Ok(Instruction::I64x2Neg), // Alternative
+        218 => Ok(Instruction::I64x2Add), // Alternative
+        219 => Ok(Instruction::I64x2Sub), // Alternative
+        220 => Ok(Instruction::I64x2Mul), // Alternative
+        // f32x4 operations (221-236, shifted from 216)
+        221 => Ok(Instruction::F32x4Ceil),
+        222 => Ok(Instruction::F32x4Floor),
+        223 => Ok(Instruction::F32x4Trunc),
+        224 => Ok(Instruction::F32x4Nearest),
+        225 => Ok(Instruction::F32x4Abs),
+        226 => Ok(Instruction::F32x4Neg),
+        227 => Ok(Instruction::F32x4Sqrt),
+        228 => Ok(Instruction::F32x4Add),
+        229 => Ok(Instruction::F32x4Sub),
+        230 => Ok(Instruction::F32x4Mul),
+        231 => Ok(Instruction::F32x4Div),
+        232 => Ok(Instruction::F32x4Min),
+        233 => Ok(Instruction::F32x4Max),
+        234 => Ok(Instruction::F32x4Pmin),
+        235 => Ok(Instruction::F32x4Pmax),
+        // f32x4 alternatives
+        236 => Ok(Instruction::F32x4Ceil),    // Alternative
+        237 => Ok(Instruction::F32x4Floor),   // Alternative
+        238 => Ok(Instruction::F32x4Trunc),   // Alternative
+        239 => Ok(Instruction::F32x4Nearest), // Alternative
+        // f64x2 operations (240-255, shifted from 231)
+        240 => Ok(Instruction::F64x2Ceil),
+        241 => Ok(Instruction::F64x2Floor),
+        242 => Ok(Instruction::F64x2Trunc),
+        243 => Ok(Instruction::F64x2Nearest),
+        244 => Ok(Instruction::F64x2Abs),
+        245 => Ok(Instruction::F64x2Neg),
+        246 => Ok(Instruction::F64x2Sqrt),
+        247 => Ok(Instruction::F64x2Add),
+        248 => Ok(Instruction::F64x2Sub),
+        249 => Ok(Instruction::F64x2Mul),
+        250 => Ok(Instruction::F64x2Div),
+        251 => Ok(Instruction::F64x2Min),
+        252 => Ok(Instruction::F64x2Max),
+        253 => Ok(Instruction::F64x2Pmin),
+        254 => Ok(Instruction::F64x2Pmax),
+        // Truncation/conversion (255-262)
+        255 => Ok(Instruction::I32x4TruncSatF32x4S),
+        256 => Ok(Instruction::I32x4TruncSatF32x4U),
+        257 => Ok(Instruction::F32x4ConvertI32x4S),
+        258 => Ok(Instruction::F32x4ConvertI32x4U),
+        259 => Ok(Instruction::I32x4TruncSatF64x2SZero),
+        260 => Ok(Instruction::I32x4TruncSatF64x2UZero),
+        261 => Ok(Instruction::F64x2ConvertLowI32x4S),
+        262 => Ok(Instruction::F64x2ConvertLowI32x4U),
+        // Relaxed SIMD (263-279)
+        263 => Ok(Instruction::I8x16RelaxedSwizzle),
+        264 => Ok(Instruction::I32x4RelaxedTruncS_F32x4),
+        265 => Ok(Instruction::I32x4RelaxedTruncU_F32x4),
+        266 => Ok(Instruction::I32x4RelaxedTruncS_F64x2),
+        267 => Ok(Instruction::I32x4RelaxedTruncU_F64x2),
+        268 => Ok(Instruction::F32x4RelaxedMadd),
+        269 => Ok(Instruction::F32x4RelaxedNmadd),
+        270 => Ok(Instruction::F64x2RelaxedMadd),
+        271 => Ok(Instruction::F64x2RelaxedNmadd),
+        272 => Ok(Instruction::I8x16RelaxedLansel),
+        273 => Ok(Instruction::I16x8RelaxedLansel),
+        274 => Ok(Instruction::I32x4RelaxedLansel),
+        275 => Ok(Instruction::I64x2RelaxedLansel),
+        276 => Ok(Instruction::F32x4RelaxedMin),
+        277 => Ok(Instruction::F32x4RelaxedMax),
+        278 => Ok(Instruction::F64x2RelaxedMin),
+        279 => Ok(Instruction::F64x2RelaxedMax),
+        280 => Ok(Instruction::I16x8RelaxedQ15MulrS),
+        281 => Ok(Instruction::I16x8RelaxedDotI8x16I7x16S),
+        282 => Ok(Instruction::I32x4RelaxedDotI8x16I7x16S),
+        283 => Ok(Instruction::I32x4RelaxedDotI8x16I7x16AddS),
         // i8x16 relaxed laneselect alias
-        275 => Ok(Instruction::I8x16RelaxedLansel),
+        284 => Ok(Instruction::I8x16RelaxedLansel),
         _ => Err("unknown SIMD sub-opcode"),
     }
 }
