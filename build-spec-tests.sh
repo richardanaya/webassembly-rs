@@ -20,23 +20,52 @@ mkdir -p "$OUTPUT_DIR"
 
 # Find and convert .wast files
 echo "Converting spec tests to .wasm..."
-find "$SPEC_DIR/test/core" -name "*.wast" -type f | head -20 | while read -r wast_file; do
-    # Extract base name
-    base=$(basename "$wast_file" .wast)
+echo "This may take a while for 486 test files..."
+echo ""
+
+SUCCESS=0
+FAILED=0
+SKIPPED=0
+TOTAL=0
+
+# Find all wast files and convert them
+find "$SPEC_DIR" -name "*.wast" -type f | while read -r wast_file; do
+    TOTAL=$((TOTAL + 1))
+    
+    # Extract base name (preserve subdirectory structure in name)
+    rel_path="${wast_file#$SPEC_DIR/}"
+    base=$(echo "$rel_path" | sed 's|/|_|g' | sed 's/.wast$//')
     wasm_out="$OUTPUT_DIR/${base}.wasm"
     
-    # Note: wat2wasm converts the entire wast file
-    # Some wast files have multiple modules/asserts, we may need special handling
-    echo "  Converting: $base"
+    # Show progress every 50 files
+    if [ $((TOTAL % 50)) -eq 0 ]; then
+        echo "  Progress: $TOTAL files processed..."
+    fi
     
-    # Try to convert - may fail for complex wast files
+    # Try to convert - may fail for complex wast files with assertions
     if wat2wasm "$wast_file" -o "$wasm_out" 2>/dev/null; then
-        echo "    ✓ Created: $wasm_out"
+        SUCCESS=$((SUCCESS + 1))
     else
-        echo "    ⚠ Skipped (complex wast file): $base"
+        # Check if it's a "valid" wast file (simple module) vs test script
+        if grep -q "(assert" "$wast_file" 2>/dev/null || \
+           grep -q "(invoke" "$wast_file" 2>/dev/null || \
+           grep -q "(module" "$wast_file" 2>/dev/null | head -1 | grep -q "\$"; then
+            # It's a test script with assertions, skip it
+            SKIPPED=$((SKIPPED + 1))
+        else
+            FAILED=$((FAILED + 1))
+        fi
     fi
 done
 
 echo ""
-echo "Done! Binary tests available in: $OUTPUT_DIR"
-echo "Run tests with: cargo test"
+echo "=================================="
+echo "Conversion Results:"
+echo "  Total files: $TOTAL"
+echo "  ✓ Successful: $SUCCESS"
+echo "  ⚠ Skipped (test scripts): $SKIPPED"
+echo "  ✗ Failed: $FAILED"
+echo "=================================="
+echo ""
+echo "Binary tests available in: $OUTPUT_DIR"
+echo "Run tests with: cargo test test_spec -- --ignored"

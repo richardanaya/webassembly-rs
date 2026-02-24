@@ -43,6 +43,25 @@ pub fn load_spec_tests() -> Vec<(String, Vec<u8>)> {
         }
     }
 
+    // Also check for converted spec test wasm files in fixtures/spec
+    if Path::new("tests/fixtures/spec").exists() {
+        if let Ok(entries) = fs::read_dir("tests/fixtures/spec") {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("wasm") {
+                    if let Ok(bytes) = fs::read(&path) {
+                        let name = path
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("unknown")
+                            .to_string();
+                        tests.push((name, bytes));
+                    }
+                }
+            }
+        }
+    }
+
     // Also check for any .wasm files directly in the spec repo
     if Path::new("tests/spec-tests").exists() {
         // Look for pre-built wasm binaries if they exist
