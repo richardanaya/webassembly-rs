@@ -1662,7 +1662,8 @@ fn byte_to_valtype(b: u8) -> Result<ValType, &'static str> {
     }
 }
 
-fn valtype_to_byte(v: &ValType) -> u8 {
+/// Convert a ValType to its byte representation
+pub fn valtype_to_byte(v: &ValType) -> u8 {
     match v {
         ValType::I32 => 0x7F,
         ValType::I64 => 0x7E,
@@ -2812,6 +2813,119 @@ pub fn encode(program: &Program) -> Vec<u8> {
         }
     }
     out
+}
+
+// ============================================================================
+// HELPER EXPORTS FOR COMPILER AUTHORS
+// ============================================================================
+
+/// Re-export of LEB128 encoding/decoding functions for compiler builders
+pub mod leb128 {
+    //! LEB128 encoding and decoding utilities
+    //!
+    //! These functions are useful when building WebAssembly compilers
+    //! and need to encode integers in the LEB128 format used by WASM.
+
+    pub use super::leb::encode_i32;
+    pub use super::leb::encode_i64;
+    pub use super::leb::encode_u32;
+    pub use super::leb::encode_u64;
+    pub use super::leb::i32 as decode_i32;
+    pub use super::leb::i64 as decode_i64;
+    pub use super::leb::u32 as decode_u32;
+    pub use super::leb::u64 as decode_u64;
+}
+
+/// Export kind constants for use when building export sections
+pub const DESC_FUNCTION: u8 = 0x00;
+pub const DESC_TABLE: u8 = 0x01;
+pub const DESC_MEMORY: u8 = 0x02;
+pub const DESC_GLOBAL: u8 = 0x03;
+pub const DESC_TAG: u8 = 0x04;
+
+/// Limit flags for memory and table limits
+pub const LIMIT_MIN: u8 = 0x00;
+pub const LIMIT_MIN_MAX: u8 = 0x01;
+pub const LIMIT_MIN_SHARED: u8 = 0x02;
+pub const LIMIT_MIN_MAX_SHARED: u8 = 0x03;
+
+/// Block type for void (empty block)
+pub const BLOCKTYPE_VOID: u8 = 0x40;
+
+/// Encode a function type to bytes
+/// Format: 0x60 [params] [results]
+pub fn encode_functype(params: &[ValType], results: &[ValType]) -> Vec<u8> {
+    let mut bytes = vec![0x60];
+    bytes.extend((params.len() as u32).to_wasm_bytes());
+    for p in params {
+        bytes.push(valtype_to_byte(p));
+    }
+    bytes.extend((results.len() as u32).to_wasm_bytes());
+    for r in results {
+        bytes.push(valtype_to_byte(r));
+    }
+    bytes
+}
+
+/// Encode limits for memory or table
+pub fn encode_limits(min: u32, max: Option<u32>, shared: bool) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    let flag = match (max, shared) {
+        (None, false) => LIMIT_MIN,
+        (Some(_), false) => LIMIT_MIN_MAX,
+        (None, true) => LIMIT_MIN_SHARED,
+        (Some(_), true) => LIMIT_MIN_MAX_SHARED,
+    };
+    bytes.push(flag);
+    bytes.extend(min.to_wasm_bytes());
+    if let Some(m) = max {
+        bytes.extend(m.to_wasm_bytes());
+    }
+    bytes
+}
+
+/// Encode an import entry
+pub fn encode_import(module: &str, name: &str, desc: &ImportDesc) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    bytes.extend((module.len() as u32).to_wasm_bytes());
+    bytes.extend_from_slice(module.as_bytes());
+    bytes.extend((name.len() as u32).to_wasm_bytes());
+    bytes.extend_from_slice(name.as_bytes());
+    match desc {
+        ImportDesc::Func(idx) => {
+            bytes.push(DESC_FUNCTION);
+            bytes.extend((*idx as u32).to_wasm_bytes());
+        }
+        ImportDesc::Table(t) => {
+            bytes.push(DESC_TABLE);
+            bytes.push(t.reftype);
+            bytes.extend(encode_limits(t.limits.min, t.limits.max, false));
+        }
+        ImportDesc::Memory(lim) => {
+            bytes.push(DESC_MEMORY);
+            bytes.extend(encode_limits(lim.min, lim.max, false));
+        }
+        ImportDesc::Global(gt) => {
+            bytes.push(DESC_GLOBAL);
+            bytes.push(valtype_to_byte(&gt.valtype));
+            bytes.push(if gt.mutable { 0x01 } else { 0x00 });
+        }
+        ImportDesc::Tag(idx) => {
+            bytes.push(DESC_TAG);
+            bytes.extend((*idx as u32).to_wasm_bytes());
+        }
+    }
+    bytes
+}
+
+/// Encode an export entry
+pub fn encode_export(name: &str, kind: u8, idx: u32) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    bytes.extend((name.len() as u32).to_wasm_bytes());
+    bytes.extend_from_slice(name.as_bytes());
+    bytes.push(kind);
+    bytes.extend(idx.to_wasm_bytes());
+    bytes
 }
 
 #[cfg(test)]
