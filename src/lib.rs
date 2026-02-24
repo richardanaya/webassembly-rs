@@ -7,6 +7,16 @@ use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
 
+// Allow std in tests
+#[cfg(test)]
+extern crate std;
+
+// Optional: spec test loader (only for tests)
+#[cfg(test)]
+mod spec_test_loader;
+#[cfg(test)]
+pub use spec_test_loader::*;
+
 pub const MAGIC: [u8; 4] = *b"\0asm";
 pub const VERSION: u32 = 1;
 
@@ -2398,6 +2408,7 @@ pub fn encode(program: &Program) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::println;
 
     // ========== LEB128 Tests ==========
     #[test]
@@ -2635,5 +2646,58 @@ mod tests {
         assert!(found_type, "Expected Type section");
         assert!(found_export, "Expected Export section");
         assert!(found_code, "Expected Code section");
+    }
+
+    // ========== Spec Test Suite Integration ==========
+    // These tests run against the official WebAssembly spec test suite
+    // Setup required:
+    //   1. git submodule add https://github.com/WebAssembly/spec.git tests/spec-tests
+    //   2. ./build-spec-tests.sh  (converts .wast to .wasm)
+    //   Or: manually download pre-built wasm files to tests/fixtures/
+
+    #[test]
+    #[ignore = "Requires spec tests submodule - run: git submodule update --init"]
+    fn test_spec_tests_available() {
+        // This test verifies spec tests are properly set up
+        let tests = load_spec_tests();
+        assert!(
+            !tests.is_empty(),
+            "No spec tests found. Run:\n  git submodule update --init\n  ./build-spec-tests.sh"
+        );
+        println!("Found {} spec test files", tests.len());
+        for (name, _) in &tests {
+            println!("  - {}", name);
+        }
+    }
+
+    #[test]
+    #[ignore = "Requires spec tests submodule"]
+    fn test_parse_all_spec_tests() {
+        // Parse all available spec test wasm files
+        let tests = load_spec_tests();
+        assert!(!tests.is_empty(), "No spec tests available");
+
+        let mut passed = 0;
+        let mut failed = 0;
+
+        for (name, bytes) in tests {
+            match parse(&bytes) {
+                Ok(program) => {
+                    println!(
+                        "✓ {}: parsed successfully ({} sections)",
+                        name,
+                        program.sections.len()
+                    );
+                    passed += 1;
+                }
+                Err(e) => {
+                    println!("✗ {}: failed to parse - {}", name, e);
+                    failed += 1;
+                }
+            }
+        }
+
+        println!("\nResults: {} passed, {} failed", passed, failed);
+        assert_eq!(failed, 0, "{} spec tests failed to parse", failed);
     }
 }

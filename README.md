@@ -4,10 +4,62 @@ A Rust library provide opcode values and conversions of foundation types (i32,f6
 
 - [x] depends only on `#![no_std]` and `alloc` 
 - [x] includes all opcodes
+- [x] full parser and encoder
+- [x] tested against real WebAssembly binaries
+
+## Usage
 
 ```toml
 [dependencies]
 webassembly = "0.8"
+```
+
+## Testing
+
+### Running Tests
+
+```bash
+# Run basic unit tests
+cargo test
+
+# Run all tests including spec tests (requires setup)
+make test-all
+```
+
+### Official Spec Test Suite
+
+This library can be tested against the official WebAssembly spec test suite:
+
+```bash
+# 1. Add the spec repo as a git submodule
+git submodule add https://github.com/WebAssembly/spec.git tests/spec-tests
+git commit -m "Add WebAssembly spec tests"
+
+# 2. Convert .wast files to .wasm binaries (requires wabt)
+make test-spec-setup
+
+# Or manually:
+./build-spec-tests.sh
+
+# 3. Run spec tests
+cargo test test_spec -- --ignored
+```
+
+### Updating Spec Tests
+
+```bash
+# Update to latest spec tests
+git submodule update --remote tests/spec-tests
+git add tests/spec-tests
+git commit -m "Update spec tests"
+```
+
+### CI Integration
+
+For CI environments, tests automatically skip spec tests if not available:
+
+```bash
+make test-ci
 ```
 
 # License
