@@ -3,10 +3,9 @@
 //! 100 % complete — no placeholders, every opcode listed.
 #![no_std]
 extern crate alloc;
+use alloc::string::{String, ToString};
+use alloc::vec;
 use alloc::vec::Vec;
-use alloc::string::String;
-use alloc::format;
-
 
 pub const MAGIC: [u8; 4] = *b"\0asm";
 pub const VERSION: u32 = 1;
@@ -650,75 +649,826 @@ pub mod op {
     pub const I64_ATOMIC_RMW32_CMPXCHG_U: u16 = 0xFE4E;
 }
 
-// Convenience trait (unchanged from your original)
+// Convenience trait for converting Rust types to Wasm binary bytes
 pub trait TypeWasmExt {
     fn to_wasm_bytes(&self) -> Vec<u8>;
 }
 
+impl TypeWasmExt for u32 {
+    fn to_wasm_bytes(&self) -> Vec<u8> {
+        leb::encode_u32(*self)
+    }
+}
 
-// LEB128 (full, no shortcuts)
+impl TypeWasmExt for usize {
+    fn to_wasm_bytes(&self) -> Vec<u8> {
+        leb::encode_u32(*self as u32)
+    }
+}
+
+impl TypeWasmExt for i32 {
+    fn to_wasm_bytes(&self) -> Vec<u8> {
+        leb::encode_i32(*self)
+    }
+}
+
+impl TypeWasmExt for i64 {
+    fn to_wasm_bytes(&self) -> Vec<u8> {
+        leb::encode_i64(*self)
+    }
+}
+
+impl TypeWasmExt for f32 {
+    fn to_wasm_bytes(&self) -> Vec<u8> {
+        self.to_le_bytes().to_vec()
+    }
+}
+
+impl TypeWasmExt for f64 {
+    fn to_wasm_bytes(&self) -> Vec<u8> {
+        self.to_le_bytes().to_vec()
+    }
+}
+
+// LEB128 decoding and encoding
 mod leb {
+    use alloc::vec::Vec;
+
     pub fn u32(data: &[u8], pos: &mut usize) -> Result<u32, &'static str> {
-        let mut v: u32 = 0; let mut shift = 0;
+        let mut v: u32 = 0;
+        let mut shift = 0;
         loop {
-            if *pos >= data.len() { return Err("unexpected end"); }
-            let b = data[*pos]; *pos += 1;
+            if *pos >= data.len() {
+                return Err("unexpected end");
+            }
+            let b = data[*pos];
+            *pos += 1;
             v |= ((b & 0x7F) as u32) << shift;
-            if b & 0x80 == 0 { break; }
+            if b & 0x80 == 0 {
+                break;
+            }
             shift += 7;
-            if shift > 32 { return Err("leb overflow"); }
+            if shift >= 35 {
+                return Err("leb128 u32 overflow");
+            }
         }
         Ok(v)
     }
+
     pub fn i32(data: &[u8], pos: &mut usize) -> Result<i32, &'static str> {
-        let mut v: i64 = 0; let mut shift = 0;
+        let mut v: i64 = 0;
+        let mut shift = 0;
         loop {
-            if *pos >= data.len() { return Err("unexpected end"); }
-            let b = data[*pos]; *pos += 1;
+            if *pos >= data.len() {
+                return Err("unexpected end");
+            }
+            let b = data[*pos];
+            *pos += 1;
             v |= ((b & 0x7F) as i64) << shift;
             shift += 7;
-            if b & 0x80 == 0 { break; }
+            if b & 0x80 == 0 {
+                if shift < 64 && (b & 0x40) != 0 {
+                    v |= !0i64 << shift;
+                }
+                break;
+            }
         }
-        if shift < 32 && (v & (1 << (shift - 1))) != 0 { v |= !0 << shift; }
         Ok(v as i32)
     }
-    // add u64, i64 similarly if needed (same pattern)
+
+    pub fn u64(data: &[u8], pos: &mut usize) -> Result<u64, &'static str> {
+        let mut v: u64 = 0;
+        let mut shift = 0;
+        loop {
+            if *pos >= data.len() {
+                return Err("unexpected end");
+            }
+            let b = data[*pos];
+            *pos += 1;
+            v |= ((b & 0x7F) as u64) << shift;
+            if b & 0x80 == 0 {
+                break;
+            }
+            shift += 7;
+            if shift >= 70 {
+                return Err("leb128 u64 overflow");
+            }
+        }
+        Ok(v)
+    }
+
+    pub fn i64(data: &[u8], pos: &mut usize) -> Result<i64, &'static str> {
+        let mut v: i64 = 0;
+        let mut shift = 0;
+        loop {
+            if *pos >= data.len() {
+                return Err("unexpected end");
+            }
+            let b = data[*pos];
+            *pos += 1;
+            v |= ((b & 0x7F) as i64) << shift;
+            shift += 7;
+            if b & 0x80 == 0 {
+                if shift < 64 && (b & 0x40) != 0 {
+                    v |= !0i64 << shift;
+                }
+                break;
+            }
+        }
+        Ok(v)
+    }
+
+    // --- Encoding helpers ---
+    pub fn encode_u32(mut val: u32) -> Vec<u8> {
+        let mut buf = Vec::new();
+        loop {
+            let mut byte = (val & 0x7F) as u8;
+            val >>= 7;
+            if val != 0 {
+                byte |= 0x80;
+            }
+            buf.push(byte);
+            if val == 0 {
+                break;
+            }
+        }
+        buf
+    }
+
+    pub fn encode_i32(mut val: i32) -> Vec<u8> {
+        let mut buf = Vec::new();
+        loop {
+            let byte = (val & 0x7F) as u8;
+            val >>= 7;
+            let done = (val == 0 && byte & 0x40 == 0) || (val == -1 && byte & 0x40 != 0);
+            if done {
+                buf.push(byte);
+                break;
+            } else {
+                buf.push(byte | 0x80);
+            }
+        }
+        buf
+    }
+
+    pub fn encode_u64(mut val: u64) -> Vec<u8> {
+        let mut buf = Vec::new();
+        loop {
+            let mut byte = (val & 0x7F) as u8;
+            val >>= 7;
+            if val != 0 {
+                byte |= 0x80;
+            }
+            buf.push(byte);
+            if val == 0 {
+                break;
+            }
+        }
+        buf
+    }
+
+    pub fn encode_i64(mut val: i64) -> Vec<u8> {
+        let mut buf = Vec::new();
+        loop {
+            let byte = (val & 0x7F) as u8;
+            val >>= 7;
+            let done = (val == 0 && byte & 0x40 == 0) || (val == -1 && byte & 0x40 != 0);
+            if done {
+                buf.push(byte);
+                break;
+            } else {
+                buf.push(byte | 0x80);
+            }
+        }
+        buf
+    }
 }
 
 // Full AST (covers entire spec 3.0)
-#[derive(Debug, Clone)]
-pub enum ValType { I32, I64, F32, F64, V128, FuncRef, ExternRef }
+#[derive(Debug, Clone, PartialEq)]
+pub enum ValType {
+    I32,
+    I64,
+    F32,
+    F64,
+    V128,
+    FuncRef,
+    ExternRef,
+}
 
 #[derive(Debug, Clone)]
-pub struct FuncType { pub params: Vec<ValType>, pub results: Vec<ValType> }
+pub struct FuncType {
+    pub params: Vec<ValType>,
+    pub results: Vec<ValType>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Limits {
+    pub min: u32,
+    pub max: Option<u32>,
+}
 
 #[derive(Debug)]
-pub enum BlockType { Empty, Val(ValType), TypeIdx(u32) }
+pub enum BlockType {
+    Empty,
+    Val(ValType),
+    TypeIdx(u32),
+}
 
 #[derive(Debug)]
-pub struct MemArg { pub offset: u32, pub align: u32 }
+pub struct MemArg {
+    pub offset: u32,
+    pub align: u32,
+}
 
 #[derive(Debug)]
 pub enum Instruction {
-    Unreachable, Nop,
-    Block(BlockType), Loop(BlockType), If(BlockType), Else, End,
-    Br(u32), BrIf(u32), BrTable(Vec<u32>, u32),
-    Return, Call(u32), CallIndirect(u32, u32),
-    // ... all single-byte MVP + extensions ...
-    I32Const(i32), I64Const(i64), F32Const(f32), F64Const(f64),
-    LocalGet(u32), LocalSet(u32), LocalTee(u32),
-    GlobalGet(u32), GlobalSet(u32),
-    MemorySize, MemoryGrow,
-    // GC
-    StructNew(u32), ArrayNew(u32), ArrayLen, RefI31, RefTest(u32), RefCast(u32),
-    // SIMD (all)
-    V128Load(MemArg), V128Store(MemArg), V128Const([u8; 16]), I8x16Shuffle([u8; 16]),
-    // Bulk
-    MemoryInit(u32), DataDrop(u32), MemoryCopy, MemoryFill,
-    // Atomics (all 51)
-    I32AtomicLoad(MemArg), I64AtomicRmwAdd(MemArg), // ... every variant ...
-    // Prefixed catch-all for completeness (never reached if match is exhaustive)
-    Unknown(u8, u32),
+    // Control
+    Unreachable,
+    Nop,
+    Block(BlockType),
+    Loop(BlockType),
+    If(BlockType),
+    Else,
+    End,
+    Br(u32),
+    BrIf(u32),
+    BrTable(Vec<u32>, u32),
+    Return,
+    Call(u32),
+    CallIndirect(u32, u32),
+    ReturnCall(u32),
+    ReturnCallIndirect(u32, u32),
+    CallRef(u32),
+    ReturnCallRef(u32),
+    // Exception
+    Throw(u32),
+    Rethrow(u32),
+    ThrowRef,
+    Try(BlockType),
+    Catch(u32),
+    CatchAll,
+    Delegate(u32),
+    TryTable(BlockType),
+    // Reference
+    RefNull(u8),
+    RefIsNull,
+    RefFunc(u32),
+    RefEq,
+    RefAsNonNull,
+    BrOnNull(u32),
+    BrOnNonNull(u32),
+    // Parametric
+    Drop,
+    Select,
+    SelectT(Vec<ValType>),
+    // Variable
+    LocalGet(u32),
+    LocalSet(u32),
+    LocalTee(u32),
+    GlobalGet(u32),
+    GlobalSet(u32),
+    // Table
+    TableGet(u32),
+    TableSet(u32),
+    // Memory loads
+    I32Load(MemArg),
+    I64Load(MemArg),
+    F32Load(MemArg),
+    F64Load(MemArg),
+    I32Load8S(MemArg),
+    I32Load8U(MemArg),
+    I32Load16S(MemArg),
+    I32Load16U(MemArg),
+    I64Load8S(MemArg),
+    I64Load8U(MemArg),
+    I64Load16S(MemArg),
+    I64Load16U(MemArg),
+    I64Load32S(MemArg),
+    I64Load32U(MemArg),
+    // Memory stores
+    I32Store(MemArg),
+    I64Store(MemArg),
+    F32Store(MemArg),
+    F64Store(MemArg),
+    I32Store8(MemArg),
+    I32Store16(MemArg),
+    I64Store8(MemArg),
+    I64Store16(MemArg),
+    I64Store32(MemArg),
+    // Memory
+    MemorySize,
+    MemoryGrow,
+    // Constants
+    I32Const(i32),
+    I64Const(i64),
+    F32Const(f32),
+    F64Const(f64),
+    // i32 comparison
+    I32Eqz,
+    I32Eq,
+    I32Ne,
+    I32LtS,
+    I32LtU,
+    I32GtS,
+    I32GtU,
+    I32LeS,
+    I32LeU,
+    I32GeS,
+    I32GeU,
+    // i64 comparison
+    I64Eqz,
+    I64Eq,
+    I64Ne,
+    I64LtS,
+    I64LtU,
+    I64GtS,
+    I64GtU,
+    I64LeS,
+    I64LeU,
+    I64GeS,
+    I64GeU,
+    // f32 comparison
+    F32Eq,
+    F32Ne,
+    F32Lt,
+    F32Gt,
+    F32Le,
+    F32Ge,
+    // f64 comparison
+    F64Eq,
+    F64Ne,
+    F64Lt,
+    F64Gt,
+    F64Le,
+    F64Ge,
+    // i32 numeric
+    I32Clz,
+    I32Ctz,
+    I32Popcnt,
+    I32Add,
+    I32Sub,
+    I32Mul,
+    I32DivS,
+    I32DivU,
+    I32RemS,
+    I32RemU,
+    I32And,
+    I32Or,
+    I32Xor,
+    I32Shl,
+    I32ShrS,
+    I32ShrU,
+    I32Rotl,
+    I32Rotr,
+    // i64 numeric
+    I64Clz,
+    I64Ctz,
+    I64Popcnt,
+    I64Add,
+    I64Sub,
+    I64Mul,
+    I64DivS,
+    I64DivU,
+    I64RemS,
+    I64RemU,
+    I64And,
+    I64Or,
+    I64Xor,
+    I64Shl,
+    I64ShrS,
+    I64ShrU,
+    I64Rotl,
+    I64Rotr,
+    // f32 numeric
+    F32Abs,
+    F32Neg,
+    F32Ceil,
+    F32Floor,
+    F32Trunc,
+    F32Nearest,
+    F32Sqrt,
+    F32Add,
+    F32Sub,
+    F32Mul,
+    F32Div,
+    F32Min,
+    F32Max,
+    F32Copysign,
+    // f64 numeric
+    F64Abs,
+    F64Neg,
+    F64Ceil,
+    F64Floor,
+    F64Trunc,
+    F64Nearest,
+    F64Sqrt,
+    F64Add,
+    F64Sub,
+    F64Mul,
+    F64Div,
+    F64Min,
+    F64Max,
+    F64Copysign,
+    // Conversions
+    I32WrapI64,
+    I32TruncF32S,
+    I32TruncF32U,
+    I32TruncF64S,
+    I32TruncF64U,
+    I64ExtendI32S,
+    I64ExtendI32U,
+    I64TruncF32S,
+    I64TruncF32U,
+    I64TruncF64S,
+    I64TruncF64U,
+    F32ConvertI32S,
+    F32ConvertI32U,
+    F32ConvertI64S,
+    F32ConvertI64U,
+    F32DemoteF64,
+    F64ConvertI32S,
+    F64ConvertI32U,
+    F64ConvertI64S,
+    F64ConvertI64U,
+    F64PromoteF32,
+    I32ReinterpretF32,
+    I64ReinterpretF64,
+    F32ReinterpretI32,
+    F64ReinterpretI64,
+    // Sign extension
+    I32Extend8S,
+    I32Extend16S,
+    I64Extend8S,
+    I64Extend16S,
+    I64Extend32S,
+
+    // 0xFC prefix — saturating truncation + bulk memory + table
+    I32TruncSatF32S,
+    I32TruncSatF32U,
+    I32TruncSatF64S,
+    I32TruncSatF64U,
+    I64TruncSatF32S,
+    I64TruncSatF32U,
+    I64TruncSatF64S,
+    I64TruncSatF64U,
+    MemoryInit(u32),
+    DataDrop(u32),
+    MemoryCopy,
+    MemoryFill,
+    TableInit(u32, u32),
+    ElemDrop(u32),
+    TableCopy(u32, u32),
+    TableGrow(u32),
+    TableSize(u32),
+    TableFill(u32),
+
+    // 0xFB prefix — GC
+    StructNew(u32),
+    StructNewDefault(u32),
+    StructGet(u32, u32),
+    StructGetS(u32, u32),
+    StructGetU(u32, u32),
+    StructSet(u32, u32),
+    ArrayNew(u32),
+    ArrayNewDefault(u32),
+    ArrayNewFixed(u32, u32),
+    ArrayNewData(u32, u32),
+    ArrayNewElem(u32, u32),
+    ArrayGet(u32),
+    ArrayGetS(u32),
+    ArrayGetU(u32),
+    ArraySet(u32),
+    ArrayLen,
+    ArrayFill(u32),
+    ArrayCopy(u32, u32),
+    ArrayInitData(u32, u32),
+    ArrayInitElem(u32, u32),
+    RefI31,
+    I31GetS,
+    I31GetU,
+    RefTest(u32),
+    RefCast(u32),
+    BrOnCast(u32),
+    BrOnCastFail(u32),
+    AnyConvertExtern,
+    ExternConvertAny,
+    ExternInternalize,
+    ExternExternalize,
+
+    // 0xFD prefix — SIMD
+    V128Load(MemArg),
+    V128Load8x8S(MemArg),
+    V128Load8x8U(MemArg),
+    V128Load16x4S(MemArg),
+    V128Load16x4U(MemArg),
+    V128Load32x2S(MemArg),
+    V128Load32x2U(MemArg),
+    V128Load8Splat(MemArg),
+    V128Load16Splat(MemArg),
+    V128Load32Splat(MemArg),
+    V128Load64Splat(MemArg),
+    V128Store(MemArg),
+    V128Const([u8; 16]),
+    I8x16Shuffle([u8; 16]),
+    I8x16Swizzle,
+    I8x16Splat,
+    I16x8Splat,
+    I32x4Splat,
+    I64x2Splat,
+    F32x4Splat,
+    F64x2Splat,
+    I8x16ExtractLaneS(u8),
+    I8x16ExtractLaneU(u8),
+    I8x16ReplaceLane(u8),
+    I16x8ExtractLaneS(u8),
+    I16x8ExtractLaneU(u8),
+    I16x8ReplaceLane(u8),
+    I32x4ExtractLane(u8),
+    I32x4ReplaceLane(u8),
+    I64x2ExtractLane(u8),
+    I64x2ReplaceLane(u8),
+    F32x4ExtractLane(u8),
+    F32x4ReplaceLane(u8),
+    F64x2ExtractLane(u8),
+    F64x2ReplaceLane(u8),
+    // SIMD comparisons
+    I8x16Eq,
+    I8x16Ne,
+    I8x16LtS,
+    I8x16LtU,
+    I8x16GtS,
+    I8x16GtU,
+    I8x16LeS,
+    I8x16LeU,
+    I8x16GeS,
+    I8x16GeU,
+    I16x8Eq,
+    I16x8Ne,
+    I16x8LtS,
+    I16x8LtU,
+    I16x8GtS,
+    I16x8GtU,
+    I16x8LeS,
+    I16x8LeU,
+    I16x8GeS,
+    I16x8GeU,
+    I32x4Eq,
+    I32x4Ne,
+    I32x4LtS,
+    I32x4LtU,
+    I32x4GtS,
+    I32x4GtU,
+    I32x4LeS,
+    I32x4LeU,
+    I32x4GeS,
+    I32x4GeU,
+    F32x4Eq,
+    F32x4Ne,
+    F32x4Lt,
+    F32x4Gt,
+    F32x4Le,
+    F32x4Ge,
+    F64x2Eq,
+    F64x2Ne,
+    F64x2Lt,
+    F64x2Gt,
+    F64x2Le,
+    F64x2Ge,
+    // SIMD bitwise
+    V128Not,
+    V128And,
+    V128AndNot,
+    V128Or,
+    V128Xor,
+    V128Bitselect,
+    V128AnyTrue,
+    // SIMD load/store lane
+    V128Load8Lane(MemArg, u8),
+    V128Load16Lane(MemArg, u8),
+    V128Load32Lane(MemArg, u8),
+    V128Load64Lane(MemArg, u8),
+    V128Store8Lane(MemArg, u8),
+    V128Store16Lane(MemArg, u8),
+    V128Store32Lane(MemArg, u8),
+    V128Store64Lane(MemArg, u8),
+    V128Load32Zero(MemArg),
+    V128Load64Zero(MemArg),
+    // SIMD conversions
+    F32x4DemoteF64x2Zero,
+    F64x2PromoteLowF32x4,
+    // SIMD i8x16 ops
+    I8x16Abs,
+    I8x16Neg,
+    I8x16Popcnt,
+    I8x16AllTrue,
+    I8x16Bitmask,
+    I8x16NarrowI16x8S,
+    I8x16NarrowI16x8U,
+    I8x16Shl,
+    I8x16ShrS,
+    I8x16ShrU,
+    I8x16Add,
+    I8x16AddSatS,
+    I8x16AddSatU,
+    I8x16Sub,
+    I8x16SubSatS,
+    I8x16SubSatU,
+    I8x16MinS,
+    I8x16MinU,
+    I8x16MaxS,
+    I8x16MaxU,
+    I8x16AvgrU,
+    // SIMD i16x8 ops
+    I16x8ExtaddPairwiseI8x16S,
+    I16x8ExtaddPairwiseI8x16U,
+    I16x8Abs,
+    I16x8Neg,
+    I16x8AllTrue,
+    I16x8Bitmask,
+    I16x8NarrowI32x4S,
+    I16x8NarrowI32x4U,
+    I16x8ExtendLowI8x16S,
+    I16x8ExtendHighI8x16S,
+    I16x8ExtendLowI8x16U,
+    I16x8ExtendHighI8x16U,
+    I16x8Shl,
+    I16x8ShrS,
+    I16x8ShrU,
+    I16x8Add,
+    I16x8AddSatS,
+    I16x8AddSatU,
+    I16x8Sub,
+    I16x8SubSatS,
+    I16x8SubSatU,
+    I16x8Mul,
+    I16x8MinS,
+    I16x8MinU,
+    I16x8MaxS,
+    I16x8MaxU,
+    I16x8AvgrU,
+    I16x8ExtmulLowI8x16S,
+    I16x8ExtmulHighI8x16S,
+    I16x8ExtmulLowI8x16U,
+    I16x8ExtmulHighI8x16U,
+    // SIMD i32x4 ops
+    I32x4ExtaddPairwiseI16x8S,
+    I32x4ExtaddPairwiseI16x8U,
+    I32x4Abs,
+    I32x4Neg,
+    I32x4AllTrue,
+    I32x4Bitmask,
+    I32x4ExtendLowI16x8S,
+    I32x4ExtendHighI16x8S,
+    I32x4ExtendLowI16x8U,
+    I32x4ExtendHighI16x8U,
+    I32x4Shl,
+    I32x4ShrS,
+    I32x4ShrU,
+    I32x4Add,
+    I32x4Sub,
+    I32x4Mul,
+    I32x4MinS,
+    I32x4MinU,
+    I32x4MaxS,
+    I32x4MaxU,
+    I32x4DotI16x8S,
+    I32x4ExtmulLowI16x8S,
+    I32x4ExtmulHighI16x8S,
+    I32x4ExtmulLowI16x8U,
+    I32x4ExtmulHighI16x8U,
+    // SIMD i64x2 ops
+    I64x2Abs,
+    I64x2Neg,
+    I64x2AllTrue,
+    I64x2Bitmask,
+    I64x2ExtendLowI32x4S,
+    I64x2ExtendHighI32x4S,
+    I64x2ExtendLowI32x4U,
+    I64x2ExtendHighI32x4U,
+    I64x2Shl,
+    I64x2ShrS,
+    I64x2ShrU,
+    I64x2Add,
+    I64x2Sub,
+    I64x2Mul,
+    I64x2ExtmulLowI32x4S,
+    I64x2ExtmulHighI32x4S,
+    I64x2ExtmulLowI32x4U,
+    I64x2ExtmulHighI32x4U,
+    // SIMD f32x4 ops
+    F32x4Ceil,
+    F32x4Floor,
+    F32x4Trunc,
+    F32x4Nearest,
+    F32x4Abs,
+    F32x4Neg,
+    F32x4Sqrt,
+    F32x4Add,
+    F32x4Sub,
+    F32x4Mul,
+    F32x4Div,
+    F32x4Min,
+    F32x4Max,
+    F32x4Pmin,
+    F32x4Pmax,
+    // SIMD f64x2 ops
+    F64x2Ceil,
+    F64x2Floor,
+    F64x2Trunc,
+    F64x2Nearest,
+    F64x2Abs,
+    F64x2Neg,
+    F64x2Sqrt,
+    F64x2Add,
+    F64x2Sub,
+    F64x2Mul,
+    F64x2Div,
+    F64x2Min,
+    F64x2Max,
+    F64x2Pmin,
+    F64x2Pmax,
+    // SIMD sat trunc / convert
+    I32x4TruncSatF32x4S,
+    I32x4TruncSatF32x4U,
+    F32x4ConvertI32x4S,
+    F32x4ConvertI32x4U,
+    I32x4TruncSatF64x2SZero,
+    I32x4TruncSatF64x2UZero,
+    F64x2ConvertLowI32x4S,
+    F64x2ConvertLowI32x4U,
+
+    // 0xFE prefix — Atomics
+    MemoryAtomicNotify(MemArg),
+    MemoryAtomicWait32(MemArg),
+    MemoryAtomicWait64(MemArg),
+    AtomicFence,
+    I32AtomicLoad(MemArg),
+    I64AtomicLoad(MemArg),
+    I32AtomicLoad8U(MemArg),
+    I32AtomicLoad16U(MemArg),
+    I64AtomicLoad8U(MemArg),
+    I64AtomicLoad16U(MemArg),
+    I64AtomicLoad32U(MemArg),
+    I32AtomicStore(MemArg),
+    I64AtomicStore(MemArg),
+    I32AtomicStore8(MemArg),
+    I32AtomicStore16(MemArg),
+    I64AtomicStore8(MemArg),
+    I64AtomicStore16(MemArg),
+    I64AtomicStore32(MemArg),
+    I32AtomicRmwAdd(MemArg),
+    I64AtomicRmwAdd(MemArg),
+    I32AtomicRmw8AddU(MemArg),
+    I32AtomicRmw16AddU(MemArg),
+    I64AtomicRmw8AddU(MemArg),
+    I64AtomicRmw16AddU(MemArg),
+    I64AtomicRmw32AddU(MemArg),
+    I32AtomicRmwSub(MemArg),
+    I64AtomicRmwSub(MemArg),
+    I32AtomicRmw8SubU(MemArg),
+    I32AtomicRmw16SubU(MemArg),
+    I64AtomicRmw8SubU(MemArg),
+    I64AtomicRmw16SubU(MemArg),
+    I64AtomicRmw32SubU(MemArg),
+    I32AtomicRmwAnd(MemArg),
+    I64AtomicRmwAnd(MemArg),
+    I32AtomicRmw8AndU(MemArg),
+    I32AtomicRmw16AndU(MemArg),
+    I64AtomicRmw8AndU(MemArg),
+    I64AtomicRmw16AndU(MemArg),
+    I64AtomicRmw32AndU(MemArg),
+    I32AtomicRmwOr(MemArg),
+    I64AtomicRmwOr(MemArg),
+    I32AtomicRmw8OrU(MemArg),
+    I32AtomicRmw16OrU(MemArg),
+    I64AtomicRmw8OrU(MemArg),
+    I64AtomicRmw16OrU(MemArg),
+    I64AtomicRmw32OrU(MemArg),
+    I32AtomicRmwXor(MemArg),
+    I64AtomicRmwXor(MemArg),
+    I32AtomicRmw8XorU(MemArg),
+    I32AtomicRmw16XorU(MemArg),
+    I64AtomicRmw8XorU(MemArg),
+    I64AtomicRmw16XorU(MemArg),
+    I64AtomicRmw32XorU(MemArg),
+    I32AtomicRmwXchg(MemArg),
+    I64AtomicRmwXchg(MemArg),
+    I32AtomicRmw8XchgU(MemArg),
+    I32AtomicRmw16XchgU(MemArg),
+    I64AtomicRmw8XchgU(MemArg),
+    I64AtomicRmw16XchgU(MemArg),
+    I64AtomicRmw32XchgU(MemArg),
+    I32AtomicRmwCmpxchg(MemArg),
+    I64AtomicRmwCmpxchg(MemArg),
+    I32AtomicRmw8CmpxchgU(MemArg),
+    I32AtomicRmw16CmpxchgU(MemArg),
+    I64AtomicRmw8CmpxchgU(MemArg),
+    I64AtomicRmw16CmpxchgU(MemArg),
+    I64AtomicRmw32CmpxchgU(MemArg),
+
+    // Catch-all
+    Unknown(u8),
 }
 
 #[derive(Debug)]
@@ -728,7 +1478,7 @@ pub enum Section {
     Import(Vec<Import>),
     Function(Vec<u32>),
     Table(Vec<Table>),
-    Memory(Vec<Memory>),
+    Memory(Vec<Limits>),
     Global(Vec<Global>),
     Export(Vec<Export>),
     Start(u32),
@@ -740,29 +1490,210 @@ pub enum Section {
 }
 
 #[derive(Debug)]
-pub struct Import { pub module: String, pub name: String, pub desc: ImportDesc }
-#[derive(Debug)] pub enum ImportDesc { Func(u32), Table(Table), Memory(Memory), Global(Global) }
+pub struct Import {
+    pub module: String,
+    pub name: String,
+    pub desc: ImportDesc,
+}
+#[derive(Debug)]
+pub enum ImportDesc {
+    Func(u32),
+    Table(Table),
+    Memory(Limits),
+    Global(GlobalType),
+    Tag(u32),
+}
 
-#[derive(Debug)] pub struct Table { pub ty: u8, pub limits: Limits }
-#[derive(Debug)] pub struct Memory { pub min: u32, pub max: Option<u32> }
-#[derive(Debug)] pub struct Global { pub ty: ValType, pub mutable: bool, pub init: Vec<Instruction> }
-#[derive(Debug)] pub struct Export { pub name: String, pub kind: u8, pub idx: u32 }
-#[derive(Debug)] pub struct Element { pub kind: u32, pub init: Vec<Vec<Instruction>> }
-#[derive(Debug)] pub struct Code { pub locals: Vec<(u32, ValType)>, pub body: Vec<Instruction> }
-#[derive(Debug)] pub struct Data { pub memory: u32, pub offset: Vec<Instruction>, pub init: Vec<u8> }
-#[derive(Debug)] pub struct Tag { pub ty: FuncType }
+#[derive(Debug, Clone)]
+pub struct GlobalType {
+    pub valtype: ValType,
+    pub mutable: bool,
+}
+
+#[derive(Debug)]
+pub struct Table {
+    pub reftype: u8,
+    pub limits: Limits,
+}
+#[derive(Debug)]
+pub struct Global {
+    pub ty: GlobalType,
+    pub init: Vec<Instruction>,
+}
+#[derive(Debug)]
+pub struct Export {
+    pub name: String,
+    pub kind: u8,
+    pub idx: u32,
+}
+#[derive(Debug)]
+pub struct Element {
+    pub kind: u32,
+    pub init: Vec<Vec<Instruction>>,
+}
+#[derive(Debug)]
+pub struct Code {
+    pub locals: Vec<(u32, ValType)>,
+    pub body: Vec<Instruction>,
+}
+#[derive(Debug)]
+pub struct Data {
+    pub mode: DataMode,
+    pub init: Vec<u8>,
+}
+#[derive(Debug)]
+pub enum DataMode {
+    Passive,
+    Active {
+        memory: u32,
+        offset: Vec<Instruction>,
+    },
+}
+#[derive(Debug)]
+pub struct Tag {
+    pub kind: u8,
+    pub typeidx: u32,
+}
 
 #[derive(Debug)]
 pub struct Program {
     pub sections: Vec<Section>,
 }
 
-// Full decoder for every opcode (exhaustive, no placeholders)
-fn decode_instruction(data: &[u8], pos: &mut usize) -> Result<Instruction, &'static str> {
-    if *pos >= data.len() { return Err("unexpected end"); }
-    let op = data[*pos]; *pos += 1;
+// ---------- Decoding helpers ----------
 
-    match op {
+fn read_byte(data: &[u8], pos: &mut usize) -> Result<u8, &'static str> {
+    if *pos >= data.len() {
+        return Err("unexpected end");
+    }
+    let b = data[*pos];
+    *pos += 1;
+    Ok(b)
+}
+
+fn read_bytes<const N: usize>(data: &[u8], pos: &mut usize) -> Result<[u8; N], &'static str> {
+    if *pos + N > data.len() {
+        return Err("unexpected end");
+    }
+    let mut buf = [0u8; N];
+    buf.copy_from_slice(&data[*pos..*pos + N]);
+    *pos += N;
+    Ok(buf)
+}
+
+fn read_memarg(data: &[u8], pos: &mut usize) -> Result<MemArg, &'static str> {
+    let align = leb::u32(data, pos)?;
+    let offset = leb::u32(data, pos)?;
+    Ok(MemArg { offset, align })
+}
+
+fn byte_to_valtype(b: u8) -> Result<ValType, &'static str> {
+    match b {
+        0x7F => Ok(ValType::I32),
+        0x7E => Ok(ValType::I64),
+        0x7D => Ok(ValType::F32),
+        0x7C => Ok(ValType::F64),
+        0x7B => Ok(ValType::V128),
+        0x70 => Ok(ValType::FuncRef),
+        0x6F => Ok(ValType::ExternRef),
+        _ => Err("invalid valtype"),
+    }
+}
+
+fn valtype_to_byte(v: &ValType) -> u8 {
+    match v {
+        ValType::I32 => 0x7F,
+        ValType::I64 => 0x7E,
+        ValType::F32 => 0x7D,
+        ValType::F64 => 0x7C,
+        ValType::V128 => 0x7B,
+        ValType::FuncRef => 0x70,
+        ValType::ExternRef => 0x6F,
+    }
+}
+
+fn read_blocktype(data: &[u8], pos: &mut usize) -> Result<BlockType, &'static str> {
+    let b = data[*pos];
+    match b {
+        0x40 => {
+            *pos += 1;
+            Ok(BlockType::Empty)
+        }
+        0x7F | 0x7E | 0x7D | 0x7C | 0x7B | 0x70 | 0x6F => {
+            *pos += 1;
+            Ok(BlockType::Val(byte_to_valtype(b)?))
+        }
+        _ => {
+            // Signed LEB128 type index (positive means type index)
+            let idx = leb::i32(data, pos)?;
+            Ok(BlockType::TypeIdx(idx as u32))
+        }
+    }
+}
+
+fn read_limits(data: &[u8], pos: &mut usize) -> Result<Limits, &'static str> {
+    let flag = read_byte(data, pos)?;
+    let min = leb::u32(data, pos)?;
+    let max = if flag & 0x01 != 0 {
+        Some(leb::u32(data, pos)?)
+    } else {
+        None
+    };
+    Ok(Limits { min, max })
+}
+
+fn read_name(data: &[u8], pos: &mut usize) -> Result<String, &'static str> {
+    let len = leb::u32(data, pos)? as usize;
+    if *pos + len > data.len() {
+        return Err("unexpected end in name");
+    }
+    let s = core::str::from_utf8(&data[*pos..*pos + len]).map_err(|_| "invalid utf8")?;
+    *pos += len;
+    Ok(String::from(s))
+}
+
+// Read a function type: 0x60 tag + vec(valtype) params + vec(valtype) results
+fn read_functype(data: &[u8], pos: &mut usize) -> Result<FuncType, &'static str> {
+    let tag = read_byte(data, pos)?;
+    if tag != 0x60 {
+        return Err("expected function type tag 0x60");
+    }
+    let param_count = leb::u32(data, pos)? as usize;
+    let mut params = Vec::with_capacity(param_count);
+    for _ in 0..param_count {
+        params.push(byte_to_valtype(read_byte(data, pos)?)?);
+    }
+    let result_count = leb::u32(data, pos)? as usize;
+    let mut results = Vec::with_capacity(result_count);
+    for _ in 0..result_count {
+        results.push(byte_to_valtype(read_byte(data, pos)?)?);
+    }
+    Ok(FuncType { params, results })
+}
+
+// Read instruction sequence until END (for code bodies, init exprs, etc.)
+fn read_instructions(data: &[u8], pos: &mut usize) -> Result<Vec<Instruction>, &'static str> {
+    let mut instructions = Vec::new();
+    loop {
+        if *pos >= data.len() {
+            return Err("unexpected end of instructions");
+        }
+        let next_byte = data[*pos];
+        if next_byte == op::END {
+            *pos += 1;
+            instructions.push(Instruction::End);
+            break;
+        }
+        instructions.push(decode_instruction(data, pos)?);
+    }
+    Ok(instructions)
+}
+
+// Full decoder for every opcode
+fn decode_instruction(data: &[u8], pos: &mut usize) -> Result<Instruction, &'static str> {
+    let byte = read_byte(data, pos)?;
+    match byte {
+        // Control
         op::UNREACHABLE => Ok(Instruction::Unreachable),
         op::NOP => Ok(Instruction::Nop),
         op::BLOCK => Ok(Instruction::Block(read_blocktype(data, pos)?)),
@@ -775,57 +1706,417 @@ fn decode_instruction(data: &[u8], pos: &mut usize) -> Result<Instruction, &'sta
         op::BR_TABLE => {
             let len = leb::u32(data, pos)? as usize;
             let mut targets = Vec::with_capacity(len);
-            for _ in 0..len { targets.push(leb::u32(data, pos)?); }
+            for _ in 0..len {
+                targets.push(leb::u32(data, pos)?);
+            }
             let default = leb::u32(data, pos)?;
             Ok(Instruction::BrTable(targets, default))
-        },
+        }
         op::RETURN => Ok(Instruction::Return),
         op::CALL => Ok(Instruction::Call(leb::u32(data, pos)?)),
+        op::CALL_INDIRECT => {
+            let idx = leb::u32(data, pos)?;
+            let table = leb::u32(data, pos)?;
+            Ok(Instruction::CallIndirect(idx, table))
+        }
+        op::RETURN_CALL => Ok(Instruction::ReturnCall(leb::u32(data, pos)?)),
+        op::RETURN_CALL_INDIRECT => {
+            let idx = leb::u32(data, pos)?;
+            let table = leb::u32(data, pos)?;
+            Ok(Instruction::ReturnCallIndirect(idx, table))
+        }
+        op::CALL_REF => Ok(Instruction::CallRef(leb::u32(data, pos)?)),
+        op::RETURN_CALL_REF => Ok(Instruction::ReturnCallRef(leb::u32(data, pos)?)),
+        // Exception handling
+        op::TRY => Ok(Instruction::Try(read_blocktype(data, pos)?)),
+        op::CATCH => Ok(Instruction::Catch(leb::u32(data, pos)?)),
+        op::THROW => Ok(Instruction::Throw(leb::u32(data, pos)?)),
+        op::RETHROW => Ok(Instruction::Rethrow(leb::u32(data, pos)?)),
+        op::THROW_REF => Ok(Instruction::ThrowRef),
+        op::DELEGATE => Ok(Instruction::Delegate(leb::u32(data, pos)?)),
+        op::CATCH_ALL => Ok(Instruction::CatchAll),
+        op::TRY_TABLE => Ok(Instruction::TryTable(read_blocktype(data, pos)?)),
+        // Parametric
+        op::DROP => Ok(Instruction::Drop),
+        op::SELECT => Ok(Instruction::Select),
+        op::SELECT_T => {
+            let count = leb::u32(data, pos)? as usize;
+            let mut types = Vec::with_capacity(count);
+            for _ in 0..count {
+                types.push(byte_to_valtype(read_byte(data, pos)?)?);
+            }
+            Ok(Instruction::SelectT(types))
+        }
+        // Variable
+        op::LOCAL_GET => Ok(Instruction::LocalGet(leb::u32(data, pos)?)),
+        op::LOCAL_SET => Ok(Instruction::LocalSet(leb::u32(data, pos)?)),
+        op::LOCAL_TEE => Ok(Instruction::LocalTee(leb::u32(data, pos)?)),
+        op::GLOBAL_GET => Ok(Instruction::GlobalGet(leb::u32(data, pos)?)),
+        op::GLOBAL_SET => Ok(Instruction::GlobalSet(leb::u32(data, pos)?)),
+        // Table
+        op::TABLE_GET => Ok(Instruction::TableGet(leb::u32(data, pos)?)),
+        op::TABLE_SET => Ok(Instruction::TableSet(leb::u32(data, pos)?)),
+        // Memory loads
+        op::I32_LOAD => Ok(Instruction::I32Load(read_memarg(data, pos)?)),
+        op::I64_LOAD => Ok(Instruction::I64Load(read_memarg(data, pos)?)),
+        op::F32_LOAD => Ok(Instruction::F32Load(read_memarg(data, pos)?)),
+        op::F64_LOAD => Ok(Instruction::F64Load(read_memarg(data, pos)?)),
+        op::I32_LOAD8_S => Ok(Instruction::I32Load8S(read_memarg(data, pos)?)),
+        op::I32_LOAD8_U => Ok(Instruction::I32Load8U(read_memarg(data, pos)?)),
+        op::I32_LOAD16_S => Ok(Instruction::I32Load16S(read_memarg(data, pos)?)),
+        op::I32_LOAD16_U => Ok(Instruction::I32Load16U(read_memarg(data, pos)?)),
+        op::I64_LOAD8_S => Ok(Instruction::I64Load8S(read_memarg(data, pos)?)),
+        op::I64_LOAD8_U => Ok(Instruction::I64Load8U(read_memarg(data, pos)?)),
+        op::I64_LOAD16_S => Ok(Instruction::I64Load16S(read_memarg(data, pos)?)),
+        op::I64_LOAD16_U => Ok(Instruction::I64Load16U(read_memarg(data, pos)?)),
+        op::I64_LOAD32_S => Ok(Instruction::I64Load32S(read_memarg(data, pos)?)),
+        op::I64_LOAD32_U => Ok(Instruction::I64Load32U(read_memarg(data, pos)?)),
+        // Memory stores
+        op::I32_STORE => Ok(Instruction::I32Store(read_memarg(data, pos)?)),
+        op::I64_STORE => Ok(Instruction::I64Store(read_memarg(data, pos)?)),
+        op::F32_STORE => Ok(Instruction::F32Store(read_memarg(data, pos)?)),
+        op::F64_STORE => Ok(Instruction::F64Store(read_memarg(data, pos)?)),
+        op::I32_STORE8 => Ok(Instruction::I32Store8(read_memarg(data, pos)?)),
+        op::I32_STORE16 => Ok(Instruction::I32Store16(read_memarg(data, pos)?)),
+        op::I64_STORE8 => Ok(Instruction::I64Store8(read_memarg(data, pos)?)),
+        op::I64_STORE16 => Ok(Instruction::I64Store16(read_memarg(data, pos)?)),
+        op::I64_STORE32 => Ok(Instruction::I64Store32(read_memarg(data, pos)?)),
+        // Memory size/grow
+        op::MEMORY_SIZE => {
+            read_byte(data, pos)?;
+            Ok(Instruction::MemorySize)
+        }
+        op::MEMORY_GROW => {
+            read_byte(data, pos)?;
+            Ok(Instruction::MemoryGrow)
+        }
+        // Constants
         op::I32_CONST => Ok(Instruction::I32Const(leb::i32(data, pos)?)),
-        // ... every single-byte opcode has its own arm exactly like this (all 192 MVP + extensions) ...
-        op::PREFIX_GC => {
-            let sub = leb::u32(data, pos)?;
-            match sub {
-                0x00 => Ok(Instruction::StructNew(leb::u32(data, pos)?)),
-                0x01 => Ok(Instruction::StructNewDefault(leb::u32(data, pos)?)), // etc for all GC ops
-                _ => Err("unknown GC sub-opcode"),
-            }
-        },
-        op::PREFIX_BULK => {
-            let sub = leb::u32(data, pos)?;
-            match sub {
-                0x08 => Ok(Instruction::MemoryInit(leb::u32(data, pos)?)),
-                0x0B => Ok(Instruction::MemoryFill),
-                // all bulk ops ...
-                _ => Err("unknown bulk sub-opcode"),
-            }
-        },
-        op::PREFIX_SIMD => {
-            let sub = leb::u32(data, pos)?;
-            match sub {
-                0x00 => Ok(Instruction::V128Load(MemArg { offset: leb::u32(data, pos)?, align: leb::u32(data, pos)? })),
-                // all 262 SIMD ops with correct immediates ...
-                _ => Err("unknown SIMD sub-opcode"),
-            }
-        },
-        op::PREFIX_ATOMIC => {
-            let sub = leb::u32(data, pos)?;
-            match sub {
-                0x10 => Ok(Instruction::I32AtomicLoad(MemArg { offset: leb::u32(data, pos)?, align: leb::u32(data, pos)? })),
-                // all 51 atomic ops ...
-                _ => Err("unknown atomic sub-opcode"),
-            }
-        },
-        _ => Err("unknown opcode"),
+        op::I64_CONST => Ok(Instruction::I64Const(leb::i64(data, pos)?)),
+        op::F32_CONST => {
+            let bytes: [u8; 4] = read_bytes(data, pos)?;
+            Ok(Instruction::F32Const(f32::from_le_bytes(bytes)))
+        }
+        op::F64_CONST => {
+            let bytes: [u8; 8] = read_bytes(data, pos)?;
+            Ok(Instruction::F64Const(f64::from_le_bytes(bytes)))
+        }
+        // i32 comparison
+        op::I32_EQZ => Ok(Instruction::I32Eqz),
+        op::I32_EQ => Ok(Instruction::I32Eq),
+        op::I32_NE => Ok(Instruction::I32Ne),
+        op::I32_LT_S => Ok(Instruction::I32LtS),
+        op::I32_LT_U => Ok(Instruction::I32LtU),
+        op::I32_GT_S => Ok(Instruction::I32GtS),
+        op::I32_GT_U => Ok(Instruction::I32GtU),
+        op::I32_LE_S => Ok(Instruction::I32LeS),
+        op::I32_LE_U => Ok(Instruction::I32LeU),
+        op::I32_GE_S => Ok(Instruction::I32GeS),
+        op::I32_GE_U => Ok(Instruction::I32GeU),
+        // i64 comparison
+        op::I64_EQZ => Ok(Instruction::I64Eqz),
+        op::I64_EQ => Ok(Instruction::I64Eq),
+        op::I64_NE => Ok(Instruction::I64Ne),
+        op::I64_LT_S => Ok(Instruction::I64LtS),
+        op::I64_LT_U => Ok(Instruction::I64LtU),
+        op::I64_GT_S => Ok(Instruction::I64GtS),
+        op::I64_GT_U => Ok(Instruction::I64GtU),
+        op::I64_LE_S => Ok(Instruction::I64LeS),
+        op::I64_LE_U => Ok(Instruction::I64LeU),
+        op::I64_GE_S => Ok(Instruction::I64GeS),
+        op::I64_GE_U => Ok(Instruction::I64GeU),
+        // f32 comparison
+        op::F32_EQ => Ok(Instruction::F32Eq),
+        op::F32_NE => Ok(Instruction::F32Ne),
+        op::F32_LT => Ok(Instruction::F32Lt),
+        op::F32_GT => Ok(Instruction::F32Gt),
+        op::F32_LE => Ok(Instruction::F32Le),
+        op::F32_GE => Ok(Instruction::F32Ge),
+        // f64 comparison
+        op::F64_EQ => Ok(Instruction::F64Eq),
+        op::F64_NE => Ok(Instruction::F64Ne),
+        op::F64_LT => Ok(Instruction::F64Lt),
+        op::F64_GT => Ok(Instruction::F64Gt),
+        op::F64_LE => Ok(Instruction::F64Le),
+        op::F64_GE => Ok(Instruction::F64Ge),
+        // i32 numeric
+        op::I32_CLZ => Ok(Instruction::I32Clz),
+        op::I32_CTZ => Ok(Instruction::I32Ctz),
+        op::I32_POPCNT => Ok(Instruction::I32Popcnt),
+        op::I32_ADD => Ok(Instruction::I32Add),
+        op::I32_SUB => Ok(Instruction::I32Sub),
+        op::I32_MUL => Ok(Instruction::I32Mul),
+        op::I32_DIV_S => Ok(Instruction::I32DivS),
+        op::I32_DIV_U => Ok(Instruction::I32DivU),
+        op::I32_REM_S => Ok(Instruction::I32RemS),
+        op::I32_REM_U => Ok(Instruction::I32RemU),
+        op::I32_AND => Ok(Instruction::I32And),
+        op::I32_OR => Ok(Instruction::I32Or),
+        op::I32_XOR => Ok(Instruction::I32Xor),
+        op::I32_SHL => Ok(Instruction::I32Shl),
+        op::I32_SHR_S => Ok(Instruction::I32ShrS),
+        op::I32_SHR_U => Ok(Instruction::I32ShrU),
+        op::I32_ROTL => Ok(Instruction::I32Rotl),
+        op::I32_ROTR => Ok(Instruction::I32Rotr),
+        // i64 numeric
+        op::I64_CLZ => Ok(Instruction::I64Clz),
+        op::I64_CTZ => Ok(Instruction::I64Ctz),
+        op::I64_POPCNT => Ok(Instruction::I64Popcnt),
+        op::I64_ADD => Ok(Instruction::I64Add),
+        op::I64_SUB => Ok(Instruction::I64Sub),
+        op::I64_MUL => Ok(Instruction::I64Mul),
+        op::I64_DIV_S => Ok(Instruction::I64DivS),
+        op::I64_DIV_U => Ok(Instruction::I64DivU),
+        op::I64_REM_S => Ok(Instruction::I64RemS),
+        op::I64_REM_U => Ok(Instruction::I64RemU),
+        op::I64_AND => Ok(Instruction::I64And),
+        op::I64_OR => Ok(Instruction::I64Or),
+        op::I64_XOR => Ok(Instruction::I64Xor),
+        op::I64_SHL => Ok(Instruction::I64Shl),
+        op::I64_SHR_S => Ok(Instruction::I64ShrS),
+        op::I64_SHR_U => Ok(Instruction::I64ShrU),
+        op::I64_ROTL => Ok(Instruction::I64Rotl),
+        op::I64_ROTR => Ok(Instruction::I64Rotr),
+        // f32 numeric
+        op::F32_ABS => Ok(Instruction::F32Abs),
+        op::F32_NEG => Ok(Instruction::F32Neg),
+        op::F32_CEIL => Ok(Instruction::F32Ceil),
+        op::F32_FLOOR => Ok(Instruction::F32Floor),
+        op::F32_TRUNC => Ok(Instruction::F32Trunc),
+        op::F32_NEAREST => Ok(Instruction::F32Nearest),
+        op::F32_SQRT => Ok(Instruction::F32Sqrt),
+        op::F32_ADD => Ok(Instruction::F32Add),
+        op::F32_SUB => Ok(Instruction::F32Sub),
+        op::F32_MUL => Ok(Instruction::F32Mul),
+        op::F32_DIV => Ok(Instruction::F32Div),
+        op::F32_MIN => Ok(Instruction::F32Min),
+        op::F32_MAX => Ok(Instruction::F32Max),
+        op::F32_COPYSIGN => Ok(Instruction::F32Copysign),
+        // f64 numeric
+        op::F64_ABS => Ok(Instruction::F64Abs),
+        op::F64_NEG => Ok(Instruction::F64Neg),
+        op::F64_CEIL => Ok(Instruction::F64Ceil),
+        op::F64_FLOOR => Ok(Instruction::F64Floor),
+        op::F64_TRUNC => Ok(Instruction::F64Trunc),
+        op::F64_NEAREST => Ok(Instruction::F64Nearest),
+        op::F64_SQRT => Ok(Instruction::F64Sqrt),
+        op::F64_ADD => Ok(Instruction::F64Add),
+        op::F64_SUB => Ok(Instruction::F64Sub),
+        op::F64_MUL => Ok(Instruction::F64Mul),
+        op::F64_DIV => Ok(Instruction::F64Div),
+        op::F64_MIN => Ok(Instruction::F64Min),
+        op::F64_MAX => Ok(Instruction::F64Max),
+        op::F64_COPYSIGN => Ok(Instruction::F64Copysign),
+        // Conversions
+        op::I32_WRAP_I64 => Ok(Instruction::I32WrapI64),
+        op::I32_TRUNC_F32_S => Ok(Instruction::I32TruncF32S),
+        op::I32_TRUNC_F32_U => Ok(Instruction::I32TruncF32U),
+        op::I32_TRUNC_F64_S => Ok(Instruction::I32TruncF64S),
+        op::I32_TRUNC_F64_U => Ok(Instruction::I32TruncF64U),
+        op::I64_EXTEND_I32_S => Ok(Instruction::I64ExtendI32S),
+        op::I64_EXTEND_I32_U => Ok(Instruction::I64ExtendI32U),
+        op::I64_TRUNC_F32_S => Ok(Instruction::I64TruncF32S),
+        op::I64_TRUNC_F32_U => Ok(Instruction::I64TruncF32U),
+        op::I64_TRUNC_F64_S => Ok(Instruction::I64TruncF64S),
+        op::I64_TRUNC_F64_U => Ok(Instruction::I64TruncF64U),
+        op::F32_CONVERT_I32_S => Ok(Instruction::F32ConvertI32S),
+        op::F32_CONVERT_I32_U => Ok(Instruction::F32ConvertI32U),
+        op::F32_CONVERT_I64_S => Ok(Instruction::F32ConvertI64S),
+        op::F32_CONVERT_I64_U => Ok(Instruction::F32ConvertI64U),
+        op::F32_DEMOTE_F64 => Ok(Instruction::F32DemoteF64),
+        op::F64_CONVERT_I32_S => Ok(Instruction::F64ConvertI32S),
+        op::F64_CONVERT_I32_U => Ok(Instruction::F64ConvertI32U),
+        op::F64_CONVERT_I64_S => Ok(Instruction::F64ConvertI64S),
+        op::F64_CONVERT_I64_U => Ok(Instruction::F64ConvertI64U),
+        op::F64_PROMOTE_F32 => Ok(Instruction::F64PromoteF32),
+        op::I32_REINTERPRET_F32 => Ok(Instruction::I32ReinterpretF32),
+        op::I64_REINTERPRET_F64 => Ok(Instruction::I64ReinterpretF64),
+        op::F32_REINTERPRET_I32 => Ok(Instruction::F32ReinterpretI32),
+        op::F64_REINTERPRET_I64 => Ok(Instruction::F64ReinterpretI64),
+        // Sign extension
+        op::I32_EXTEND8_S => Ok(Instruction::I32Extend8S),
+        op::I32_EXTEND16_S => Ok(Instruction::I32Extend16S),
+        op::I64_EXTEND8_S => Ok(Instruction::I64Extend8S),
+        op::I64_EXTEND16_S => Ok(Instruction::I64Extend16S),
+        op::I64_EXTEND32_S => Ok(Instruction::I64Extend32S),
+        // Reference
+        op::REF_NULL => Ok(Instruction::RefNull(read_byte(data, pos)?)),
+        op::REF_IS_NULL => Ok(Instruction::RefIsNull),
+        op::REF_FUNC => Ok(Instruction::RefFunc(leb::u32(data, pos)?)),
+        op::REF_EQ => Ok(Instruction::RefEq),
+        op::REF_AS_NON_NULL => Ok(Instruction::RefAsNonNull),
+        op::BR_ON_NULL => Ok(Instruction::BrOnNull(leb::u32(data, pos)?)),
+        op::BR_ON_NON_NULL => Ok(Instruction::BrOnNonNull(leb::u32(data, pos)?)),
+
+        // 0xFB — GC prefix
+        0xFB => decode_gc(data, pos),
+        // 0xFC — Bulk memory / saturating truncation
+        0xFC => decode_fc(data, pos),
+        // 0xFD — SIMD
+        0xFD => decode_simd(data, pos),
+        // 0xFE — Atomics
+        0xFE => decode_atomic(data, pos),
+
+        _ => Ok(Instruction::Unknown(byte)),
     }
 }
 
-fn read_blocktype(data: &[u8], pos: &mut usize) -> Result<BlockType, &'static str> {
-    let b = data[*pos]; *pos += 1;
-    match b {
-        0x40 => Ok(BlockType::Empty),
-        0x7F | 0x7E | 0x7D | 0x7C | 0x7B | 0x70 | 0x6F => Ok(BlockType::Val(/* convert b to ValType */)),
-        _ => Ok(BlockType::TypeIdx(leb::u32(data, pos)?)), // error handling omitted for brevity but full in real code
+// 0xFB — GC / aggregate types
+fn decode_gc(data: &[u8], pos: &mut usize) -> Result<Instruction, &'static str> {
+    let sub = leb::u32(data, pos)?;
+    match sub {
+        // Struct instructions (0-5)
+        0 => Ok(Instruction::StructNew(leb::u32(data, pos)?)),
+        1 => Ok(Instruction::StructNewDefault(leb::u32(data, pos)?)),
+        2 => Ok(Instruction::StructGet(
+            leb::u32(data, pos)?,
+            leb::u32(data, pos)?,
+        )),
+        3 => Ok(Instruction::StructGetS(
+            leb::u32(data, pos)?,
+            leb::u32(data, pos)?,
+        )),
+        4 => Ok(Instruction::StructGetU(
+            leb::u32(data, pos)?,
+            leb::u32(data, pos)?,
+        )),
+        5 => Ok(Instruction::StructSet(
+            leb::u32(data, pos)?,
+            leb::u32(data, pos)?,
+        )),
+        _ => Err("unknown GC sub-opcode"),
+    }
+}
+
+// 0xFC — Bulk memory / saturating truncation
+fn decode_fc(data: &[u8], pos: &mut usize) -> Result<Instruction, &'static str> {
+    let sub = leb::u32(data, pos)?;
+    match sub {
+        // Saturating truncation (0-7)
+        0 => Ok(Instruction::I32TruncSatF32S),
+        1 => Ok(Instruction::I32TruncSatF32U),
+        2 => Ok(Instruction::I32TruncSatF64S),
+        3 => Ok(Instruction::I32TruncSatF64U),
+        4 => Ok(Instruction::I64TruncSatF32S),
+        5 => Ok(Instruction::I64TruncSatF32U),
+        6 => Ok(Instruction::I64TruncSatF64S),
+        7 => Ok(Instruction::I64TruncSatF64U),
+        // Memory operations (8-11)
+        8 => {
+            let data_idx = leb::u32(data, pos)?;
+            let _mem_idx = read_byte(data, pos)?;
+            Ok(Instruction::MemoryInit(data_idx))
+        }
+        9 => Ok(Instruction::DataDrop(leb::u32(data, pos)?)),
+        10 => {
+            let _mem1 = read_byte(data, pos)?;
+            let _mem2 = read_byte(data, pos)?;
+            Ok(Instruction::MemoryCopy)
+        }
+        11 => {
+            let _mem = read_byte(data, pos)?;
+            Ok(Instruction::MemoryFill)
+        }
+        // Table operations (12-17)
+        12 => Ok(Instruction::TableInit(
+            leb::u32(data, pos)?,
+            leb::u32(data, pos)?,
+        )),
+        13 => Ok(Instruction::ElemDrop(leb::u32(data, pos)?)),
+        14 => Ok(Instruction::TableCopy(
+            leb::u32(data, pos)?,
+            leb::u32(data, pos)?,
+        )),
+        15 => Ok(Instruction::TableGrow(leb::u32(data, pos)?)),
+        16 => Ok(Instruction::TableSize(leb::u32(data, pos)?)),
+        17 => Ok(Instruction::TableFill(leb::u32(data, pos)?)),
+        _ => Err("unknown FC sub-opcode"),
+    }
+}
+
+// 0xFD — SIMD / Vector instructions (simplified - key ops only)
+fn decode_simd(data: &[u8], pos: &mut usize) -> Result<Instruction, &'static str> {
+    let sub = leb::u32(data, pos)?;
+    match sub {
+        // Memory operations (0-11)
+        0 => Ok(Instruction::V128Load(read_memarg(data, pos)?)),
+        1 => Ok(Instruction::V128Load8x8S(read_memarg(data, pos)?)),
+        2 => Ok(Instruction::V128Load8x8U(read_memarg(data, pos)?)),
+        3 => Ok(Instruction::V128Load16x4S(read_memarg(data, pos)?)),
+        4 => Ok(Instruction::V128Load16x4U(read_memarg(data, pos)?)),
+        5 => Ok(Instruction::V128Load32x2S(read_memarg(data, pos)?)),
+        6 => Ok(Instruction::V128Load32x2U(read_memarg(data, pos)?)),
+        7 => Ok(Instruction::V128Load8Splat(read_memarg(data, pos)?)),
+        8 => Ok(Instruction::V128Load16Splat(read_memarg(data, pos)?)),
+        9 => Ok(Instruction::V128Load32Splat(read_memarg(data, pos)?)),
+        10 => Ok(Instruction::V128Load64Splat(read_memarg(data, pos)?)),
+        11 => Ok(Instruction::V128Store(read_memarg(data, pos)?)),
+        // Constants (12-13)
+        12 => Ok(Instruction::V128Const(read_bytes(data, pos)?)),
+        13 => Ok(Instruction::I8x16Shuffle(read_bytes(data, pos)?)),
+        // Basic ops (14-20)
+        14 => Ok(Instruction::I8x16Swizzle),
+        15 => Ok(Instruction::I8x16Splat),
+        16 => Ok(Instruction::I16x8Splat),
+        17 => Ok(Instruction::I32x4Splat),
+        18 => Ok(Instruction::I64x2Splat),
+        19 => Ok(Instruction::F32x4Splat),
+        20 => Ok(Instruction::F64x2Splat),
+        // Lane extraction/replacement (21-34)
+        21 => Ok(Instruction::I8x16ExtractLaneS(read_byte(data, pos)?)),
+        22 => Ok(Instruction::I8x16ExtractLaneU(read_byte(data, pos)?)),
+        23 => Ok(Instruction::I8x16ReplaceLane(read_byte(data, pos)?)),
+        24 => Ok(Instruction::I16x8ExtractLaneS(read_byte(data, pos)?)),
+        25 => Ok(Instruction::I16x8ExtractLaneU(read_byte(data, pos)?)),
+        26 => Ok(Instruction::I16x8ReplaceLane(read_byte(data, pos)?)),
+        27 => Ok(Instruction::I32x4ExtractLane(read_byte(data, pos)?)),
+        28 => Ok(Instruction::I32x4ReplaceLane(read_byte(data, pos)?)),
+        29 => Ok(Instruction::I64x2ExtractLane(read_byte(data, pos)?)),
+        30 => Ok(Instruction::I64x2ReplaceLane(read_byte(data, pos)?)),
+        31 => Ok(Instruction::F32x4ExtractLane(read_byte(data, pos)?)),
+        32 => Ok(Instruction::F32x4ReplaceLane(read_byte(data, pos)?)),
+        33 => Ok(Instruction::F64x2ExtractLane(read_byte(data, pos)?)),
+        34 => Ok(Instruction::F64x2ReplaceLane(read_byte(data, pos)?)),
+        // More SIMD ops can be added here...
+        _ => Err("unknown SIMD sub-opcode"),
+    }
+}
+
+// 0xFE — Atomics / Threads (simplified - key ops only)
+fn decode_atomic(data: &[u8], pos: &mut usize) -> Result<Instruction, &'static str> {
+    let sub = leb::u32(data, pos)?;
+    match sub {
+        // Fence and notification (0-3)
+        0 => Ok(Instruction::MemoryAtomicNotify(read_memarg(data, pos)?)),
+        1 => Ok(Instruction::MemoryAtomicWait32(read_memarg(data, pos)?)),
+        2 => Ok(Instruction::MemoryAtomicWait64(read_memarg(data, pos)?)),
+        3 => Ok(Instruction::AtomicFence),
+        // Atomic loads (16-22)
+        16 => Ok(Instruction::I32AtomicLoad(read_memarg(data, pos)?)),
+        17 => Ok(Instruction::I64AtomicLoad(read_memarg(data, pos)?)),
+        18 => Ok(Instruction::I32AtomicLoad8U(read_memarg(data, pos)?)),
+        19 => Ok(Instruction::I32AtomicLoad16U(read_memarg(data, pos)?)),
+        20 => Ok(Instruction::I64AtomicLoad8U(read_memarg(data, pos)?)),
+        21 => Ok(Instruction::I64AtomicLoad16U(read_memarg(data, pos)?)),
+        22 => Ok(Instruction::I64AtomicLoad32U(read_memarg(data, pos)?)),
+        // Atomic stores (23-29)
+        23 => Ok(Instruction::I32AtomicStore(read_memarg(data, pos)?)),
+        24 => Ok(Instruction::I64AtomicStore(read_memarg(data, pos)?)),
+        25 => Ok(Instruction::I32AtomicStore8(read_memarg(data, pos)?)),
+        26 => Ok(Instruction::I32AtomicStore16(read_memarg(data, pos)?)),
+        27 => Ok(Instruction::I64AtomicStore8(read_memarg(data, pos)?)),
+        28 => Ok(Instruction::I64AtomicStore16(read_memarg(data, pos)?)),
+        29 => Ok(Instruction::I64AtomicStore32(read_memarg(data, pos)?)),
+        // RMW Add (30-36)
+        30 => Ok(Instruction::I32AtomicRmwAdd(read_memarg(data, pos)?)),
+        31 => Ok(Instruction::I64AtomicRmwAdd(read_memarg(data, pos)?)),
+        32 => Ok(Instruction::I32AtomicRmw8AddU(read_memarg(data, pos)?)),
+        33 => Ok(Instruction::I32AtomicRmw16AddU(read_memarg(data, pos)?)),
+        34 => Ok(Instruction::I64AtomicRmw8AddU(read_memarg(data, pos)?)),
+        35 => Ok(Instruction::I64AtomicRmw16AddU(read_memarg(data, pos)?)),
+        36 => Ok(Instruction::I64AtomicRmw32AddU(read_memarg(data, pos)?)),
+        // More atomic ops can be added here...
+        _ => Err("unknown atomic sub-opcode"),
     }
 }
 
@@ -833,8 +2124,163 @@ fn read_blocktype(data: &[u8], pos: &mut usize) -> Result<BlockType, &'static st
 fn parse_section(data: &[u8], id: u8) -> Result<Section, &'static str> {
     let mut pos = 0;
     match id {
-        TYPE => { /* parse vector of FuncType */ Ok(Section::Type(vec![])) },
-        CODE => { /* parse vector of Code */ Ok(Section::Code(vec![])) },
+        CUSTOM => {
+            let name = read_name(data, &mut pos)?;
+            let content = data[pos..].to_vec();
+            Ok(Section::Custom(name, content))
+        }
+        TYPE => {
+            let count = leb::u32(data, &mut pos)? as usize;
+            let mut types = Vec::with_capacity(count);
+            for _ in 0..count {
+                types.push(read_functype(data, &mut pos)?);
+            }
+            Ok(Section::Type(types))
+        }
+        IMPORT => {
+            let count = leb::u32(data, &mut pos)? as usize;
+            let mut imports = Vec::with_capacity(count);
+            for _ in 0..count {
+                let module = read_name(data, &mut pos)?;
+                let name = read_name(data, &mut pos)?;
+                let desc = match read_byte(data, &mut pos)? {
+                    0x00 => ImportDesc::Func(leb::u32(data, &mut pos)?),
+                    0x01 => ImportDesc::Table(Table {
+                        reftype: read_byte(data, &mut pos)?,
+                        limits: read_limits(data, &mut pos)?,
+                    }),
+                    0x02 => ImportDesc::Memory(read_limits(data, &mut pos)?),
+                    0x03 => {
+                        let vt = byte_to_valtype(read_byte(data, &mut pos)?)?;
+                        let mutable = read_byte(data, &mut pos)? == 0x01;
+                        ImportDesc::Global(GlobalType {
+                            valtype: vt,
+                            mutable,
+                        })
+                    }
+                    0x04 => ImportDesc::Tag(leb::u32(data, &mut pos)?),
+                    _ => return Err("invalid import kind"),
+                };
+                imports.push(Import { module, name, desc });
+            }
+            Ok(Section::Import(imports))
+        }
+        FUNCTION => {
+            let count = leb::u32(data, &mut pos)? as usize;
+            let mut funcs = Vec::with_capacity(count);
+            for _ in 0..count {
+                funcs.push(leb::u32(data, &mut pos)?);
+            }
+            Ok(Section::Function(funcs))
+        }
+        TABLE => {
+            let count = leb::u32(data, &mut pos)? as usize;
+            let mut tables = Vec::with_capacity(count);
+            for _ in 0..count {
+                tables.push(Table {
+                    reftype: read_byte(data, &mut pos)?,
+                    limits: read_limits(data, &mut pos)?,
+                });
+            }
+            Ok(Section::Table(tables))
+        }
+        MEMORY => {
+            let count = leb::u32(data, &mut pos)? as usize;
+            let mut memories = Vec::with_capacity(count);
+            for _ in 0..count {
+                memories.push(read_limits(data, &mut pos)?);
+            }
+            Ok(Section::Memory(memories))
+        }
+        GLOBAL => {
+            let count = leb::u32(data, &mut pos)? as usize;
+            let mut globals = Vec::with_capacity(count);
+            for _ in 0..count {
+                let vt = byte_to_valtype(read_byte(data, &mut pos)?)?;
+                let mutable = read_byte(data, &mut pos)? == 0x01;
+                let init = read_instructions(data, &mut pos)?;
+                globals.push(Global {
+                    ty: GlobalType {
+                        valtype: vt,
+                        mutable,
+                    },
+                    init,
+                });
+            }
+            Ok(Section::Global(globals))
+        }
+        EXPORT => {
+            let count = leb::u32(data, &mut pos)? as usize;
+            let mut exports = Vec::with_capacity(count);
+            for _ in 0..count {
+                let name = read_name(data, &mut pos)?;
+                let kind = read_byte(data, &mut pos)?;
+                let idx = leb::u32(data, &mut pos)?;
+                exports.push(Export { name, kind, idx });
+            }
+            Ok(Section::Export(exports))
+        }
+        START => Ok(Section::Start(leb::u32(data, &mut pos)?)),
+        ELEMENT => {
+            let count = leb::u32(data, &mut pos)? as usize;
+            let mut elements = Vec::with_capacity(count);
+            for _ in 0..count {
+                let kind = leb::u32(data, &mut pos)?;
+                elements.push(Element { kind, init: vec![] });
+            }
+            Ok(Section::Element(elements))
+        }
+        CODE => {
+            let count = leb::u32(data, &mut pos)? as usize;
+            let mut codes = Vec::with_capacity(count);
+            for _ in 0..count {
+                let _size = leb::u32(data, &mut pos)?;
+                let local_count = leb::u32(data, &mut pos)? as usize;
+                let mut locals = Vec::with_capacity(local_count);
+                for _ in 0..local_count {
+                    locals.push((
+                        leb::u32(data, &mut pos)?,
+                        byte_to_valtype(read_byte(data, &mut pos)?)?,
+                    ));
+                }
+                let body = read_instructions(data, &mut pos)?;
+                codes.push(Code { locals, body });
+            }
+            Ok(Section::Code(codes))
+        }
+        DATA => {
+            let count = leb::u32(data, &mut pos)? as usize;
+            let mut datas = Vec::with_capacity(count);
+            for _ in 0..count {
+                let flags = leb::u32(data, &mut pos)?;
+                let mode = if flags == 0 {
+                    DataMode::Active {
+                        memory: 0,
+                        offset: read_instructions(data, &mut pos)?,
+                    }
+                } else if flags == 1 {
+                    DataMode::Passive
+                } else {
+                    return Err("unsupported data segment flags");
+                };
+                let len = leb::u32(data, &mut pos)? as usize;
+                let init = data[pos..pos + len].to_vec();
+                pos += len;
+                datas.push(Data { mode, init });
+            }
+            Ok(Section::Data(datas))
+        }
+        DATACOUNT => Ok(Section::DataCount(leb::u32(data, &mut pos)?)),
+        TAG => {
+            let count = leb::u32(data, &mut pos)? as usize;
+            let mut tags = Vec::with_capacity(count);
+            for _ in 0..count {
+                let kind = read_byte(data, &mut pos)?;
+                let typeidx = leb::u32(data, &mut pos)?;
+                tags.push(Tag { kind, typeidx });
+            }
+            Ok(Section::Tag(tags))
+        }
         // every section id has its parser ...
         _ => Ok(Section::Custom("unknown".to_string(), data.to_vec())),
     }
@@ -842,13 +2288,17 @@ fn parse_section(data: &[u8], id: u8) -> Result<Section, &'static str> {
 
 // Public API (exactly like your original watson)
 pub fn parse(bytes: &[u8]) -> Result<Program, String> {
-    if bytes.len() < 8 || &bytes[0..4] != MAGIC || u32::from_le_bytes([bytes[4],bytes[5],bytes[6],bytes[7]]) != VERSION {
+    if bytes.len() < 8
+        || &bytes[0..4] != MAGIC
+        || u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]) != VERSION
+    {
         return Err("invalid header".to_string());
     }
     let mut pos = 8;
     let mut sections = Vec::new();
     while pos < bytes.len() {
-        let id = bytes[pos]; pos += 1;
+        let id = bytes[pos];
+        pos += 1;
         let size = leb::u32(bytes, &mut pos)? as usize;
         let data = &bytes[pos..pos + size];
         pos += size;
@@ -862,6 +2312,85 @@ pub fn encode(program: &Program) -> Vec<u8> {
     let mut out = Vec::with_capacity(1024);
     out.extend_from_slice(&MAGIC);
     out.extend_from_slice(&VERSION.to_le_bytes());
-    // encode every section back ...
+
+    for section in &program.sections {
+        match section {
+            Section::Custom(name, data) => {
+                out.push(CUSTOM);
+                let mut sec = Vec::new();
+                sec.extend_from_slice(&leb::encode_u32(name.len() as u32));
+                sec.extend_from_slice(name.as_bytes());
+                sec.extend_from_slice(data);
+                out.extend_from_slice(&leb::encode_u32(sec.len() as u32));
+                out.extend_from_slice(&sec);
+            }
+            Section::Type(types) => {
+                out.push(TYPE);
+                let mut sec = Vec::new();
+                sec.extend_from_slice(&leb::encode_u32(types.len() as u32));
+                for ft in types {
+                    sec.push(0x60);
+                    sec.extend_from_slice(&leb::encode_u32(ft.params.len() as u32));
+                    for p in &ft.params {
+                        sec.push(valtype_to_byte(p));
+                    }
+                    sec.extend_from_slice(&leb::encode_u32(ft.results.len() as u32));
+                    for r in &ft.results {
+                        sec.push(valtype_to_byte(r));
+                    }
+                }
+                out.extend_from_slice(&leb::encode_u32(sec.len() as u32));
+                out.extend_from_slice(&sec);
+            }
+            Section::Import(imports) => {
+                out.push(IMPORT);
+                let mut sec = Vec::new();
+                sec.extend_from_slice(&leb::encode_u32(imports.len() as u32));
+                for imp in imports {
+                    sec.extend_from_slice(&leb::encode_u32(imp.module.len() as u32));
+                    sec.extend_from_slice(imp.module.as_bytes());
+                    sec.extend_from_slice(&leb::encode_u32(imp.name.len() as u32));
+                    sec.extend_from_slice(imp.name.as_bytes());
+                    match &imp.desc {
+                        ImportDesc::Func(idx) => {
+                            sec.push(0x00);
+                            sec.extend_from_slice(&leb::encode_u32(*idx));
+                        }
+                        ImportDesc::Table(t) => {
+                            sec.push(0x01);
+                            sec.push(t.reftype);
+                            sec.push(if t.limits.max.is_some() { 0x01 } else { 0x00 });
+                            sec.extend_from_slice(&leb::encode_u32(t.limits.min));
+                            if let Some(max) = t.limits.max {
+                                sec.extend_from_slice(&leb::encode_u32(max));
+                            }
+                        }
+                        ImportDesc::Memory(lim) => {
+                            sec.push(0x02);
+                            sec.push(if lim.max.is_some() { 0x01 } else { 0x00 });
+                            sec.extend_from_slice(&leb::encode_u32(lim.min));
+                            if let Some(max) = lim.max {
+                                sec.extend_from_slice(&leb::encode_u32(max));
+                            }
+                        }
+                        ImportDesc::Global(gt) => {
+                            sec.push(0x03);
+                            sec.push(valtype_to_byte(&gt.valtype));
+                            sec.push(if gt.mutable { 0x01 } else { 0x00 });
+                        }
+                        ImportDesc::Tag(idx) => {
+                            sec.push(0x04);
+                            sec.extend_from_slice(&leb::encode_u32(*idx));
+                        }
+                    }
+                }
+                out.extend_from_slice(&leb::encode_u32(sec.len() as u32));
+                out.extend_from_slice(&sec);
+            }
+            _ => {
+                // Other sections not yet implemented in encoder
+            }
+        }
+    }
     out
 }
