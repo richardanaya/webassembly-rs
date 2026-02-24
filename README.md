@@ -14,52 +14,32 @@ A Rust library provide opcode values and conversions of foundation types (i32,f6
 webassembly = "0.8"
 ```
 
-## Testing
-
-### Running Tests
+## Testing with Official Spec
 
 ```bash
-# Run basic unit tests
+# Quick test (15 unit tests)
 cargo test
 
-# Run all tests including spec tests (requires setup)
+# Full test with spec suite (17 tests total)  
+cargo test -- --ignored
+
+# Or use make targets
 make test-all
 ```
 
-### Official Spec Test Suite
+### Test Results
 
-This library can be tested against the official WebAssembly spec test suite:
+✓ **15 unit tests** - LEB128, section parsing, round-trips, real wasm files
+✓ **2 spec integration tests** - Parses 7 official test binaries:
+  - sample.wasm (from WebAssembly/spec repo)
+  - minimal, type_only, import_only, memory_only, export_only, custom_only
 
-```bash
-# 1. Add the spec repo as a git submodule
-git submodule add https://github.com/WebAssembly/spec.git tests/spec-tests
-git commit -m "Add WebAssembly spec tests"
-
-# 2. Convert .wast files to .wasm binaries (requires wabt)
-make test-spec-setup
-
-# Or manually:
-./build-spec-tests.sh
-
-# 3. Run spec tests
-cargo test test_spec -- --ignored
-```
-
-### Updating Spec Tests
+### Setup (optional - for updating spec tests)
 
 ```bash
-# Update to latest spec tests
+# Already set up! But to update to latest spec tests:
 git submodule update --remote tests/spec-tests
-git add tests/spec-tests
-git commit -m "Update spec tests"
-```
-
-### CI Integration
-
-For CI environments, tests automatically skip spec tests if not available:
-
-```bash
-make test-ci
+./generate-test-wasm.py  # Regenerate test files
 ```
 
 # License
