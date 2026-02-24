@@ -1733,8 +1733,11 @@ fn read_functype(data: &[u8], pos: &mut usize) -> Result<FuncType, &'static str>
 }
 
 // Read instruction sequence until END (for code bodies, init exprs, etc.)
+// Tracks block nesting depth so nested block/loop/if...end pairs
+// don't terminate the outer sequence prematurely.
 fn read_instructions(data: &[u8], pos: &mut usize) -> Result<Vec<Instruction>, &'static str> {
     let mut instructions = Vec::new();
+    let mut depth: u32 = 0;
     loop {
         if *pos >= data.len() {
             return Err("unexpected end of instructions");
@@ -1743,9 +1746,21 @@ fn read_instructions(data: &[u8], pos: &mut usize) -> Result<Vec<Instruction>, &
         if next_byte == op::END {
             *pos += 1;
             instructions.push(Instruction::End);
-            break;
+            if depth == 0 {
+                break;
+            }
+            depth -= 1;
+        } else {
+            // Check if this instruction opens a new block
+            if next_byte == op::BLOCK
+                || next_byte == op::LOOP
+                || next_byte == op::IF
+                || next_byte == op::TRY
+            {
+                depth += 1;
+            }
+            instructions.push(decode_instruction(data, pos)?);
         }
-        instructions.push(decode_instruction(data, pos)?);
     }
     Ok(instructions)
 }
