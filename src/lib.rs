@@ -2394,3 +2394,246 @@ pub fn encode(program: &Program) -> Vec<u8> {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ========== LEB128 Tests ==========
+    #[test]
+    fn test_leb128_u32_zero() {
+        let encoded = leb::encode_u32(0);
+        assert_eq!(encoded, vec![0x00]);
+        let mut pos = 0;
+        assert_eq!(leb::u32(&encoded, &mut pos).unwrap(), 0);
+        assert_eq!(pos, 1);
+    }
+
+    #[test]
+    fn test_leb128_u32_single_byte() {
+        let encoded = leb::encode_u32(127);
+        assert_eq!(encoded, vec![0x7F]);
+        let mut pos = 0;
+        assert_eq!(leb::u32(&encoded, &mut pos).unwrap(), 127);
+        assert_eq!(pos, 1);
+    }
+
+    #[test]
+    fn test_leb128_u32_two_bytes() {
+        let encoded = leb::encode_u32(128);
+        assert_eq!(encoded, vec![0x80, 0x01]);
+        let mut pos = 0;
+        assert_eq!(leb::u32(&encoded, &mut pos).unwrap(), 128);
+        assert_eq!(pos, 2);
+    }
+
+    #[test]
+    fn test_leb128_u32_max() {
+        let encoded = leb::encode_u32(u32::MAX);
+        assert_eq!(encoded, vec![0xFF, 0xFF, 0xFF, 0xFF, 0x0F]);
+        let mut pos = 0;
+        assert_eq!(leb::u32(&encoded, &mut pos).unwrap(), u32::MAX);
+        assert_eq!(pos, 5);
+    }
+
+    #[test]
+    fn test_leb128_i32_positive() {
+        let encoded = leb::encode_i32(1);
+        assert_eq!(encoded, vec![0x01]);
+        let mut pos = 0;
+        assert_eq!(leb::i32(&encoded, &mut pos).unwrap(), 1);
+    }
+
+    #[test]
+    fn test_leb128_i32_negative() {
+        let encoded = leb::encode_i32(-1);
+        assert_eq!(encoded, vec![0x7F]);
+        let mut pos = 0;
+        assert_eq!(leb::i32(&encoded, &mut pos).unwrap(), -1);
+    }
+
+    #[test]
+    fn test_leb128_i32_negative_large() {
+        let encoded = leb::encode_i32(-128);
+        assert_eq!(encoded, vec![0x80, 0x7F]);
+        let mut pos = 0;
+        assert_eq!(leb::i32(&encoded, &mut pos).unwrap(), -128);
+    }
+
+    // ========== Minimal Valid Module Test ==========
+    #[test]
+    fn test_parse_minimal_module() {
+        // Minimal valid wasm module: magic + version
+        let bytes = vec![0x00, 0x61, 0x73, 0x6D, 0x01, 0x00, 0x00, 0x00];
+        let program = parse(&bytes).unwrap();
+        assert!(program.sections.is_empty());
+    }
+
+    // ========== Custom Section Test ==========
+    #[test]
+    fn test_custom_section() {
+        let mut bytes = vec![0x00, 0x61, 0x73, 0x6D, 0x01, 0x00, 0x00, 0x00]; // header
+        bytes.push(0x00); // custom section id
+        bytes.push(0x06); // section size: 1 (name_len) + 3 (name) + 2 (data) = 6
+        bytes.push(0x03); // name length
+        bytes.extend_from_slice(b"abc");
+        bytes.push(0x01);
+        bytes.push(0x02); // custom data
+
+        let program = parse(&bytes).unwrap();
+        assert_eq!(program.sections.len(), 1);
+        match &program.sections[0] {
+            Section::Custom(name, data) => {
+                assert_eq!(name, "abc");
+                assert_eq!(data, &vec![0x01, 0x02]);
+            }
+            _ => panic!("Expected Custom section"),
+        }
+    }
+
+    // ========== Type Section Test ==========
+    #[test]
+    fn test_type_section_empty() {
+        let mut bytes = vec![0x00, 0x61, 0x73, 0x6D, 0x01, 0x00, 0x00, 0x00]; // header
+        bytes.push(0x01); // type section id
+        bytes.push(0x01); // section size
+        bytes.push(0x00); // 0 types
+
+        let program = parse(&bytes).unwrap();
+        assert_eq!(program.sections.len(), 1);
+        match &program.sections[0] {
+            Section::Type(types) => assert!(types.is_empty()),
+            _ => panic!("Expected Type section"),
+        }
+    }
+
+    #[test]
+    fn test_type_section_single() {
+        // Type section with one function: () -> i32
+        let mut bytes = vec![0x00, 0x61, 0x73, 0x6D, 0x01, 0x00, 0x00, 0x00];
+        bytes.push(0x01); // type section id
+        bytes.push(0x05); // section size
+        bytes.push(0x01); // 1 type
+        bytes.push(0x60); // func type tag
+        bytes.push(0x00); // 0 params
+        bytes.push(0x01); // 1 result
+        bytes.push(0x7F); // i32
+
+        let program = parse(&bytes).unwrap();
+        match &program.sections[0] {
+            Section::Type(types) => {
+                assert_eq!(types.len(), 1);
+                assert!(types[0].params.is_empty());
+                assert_eq!(types[0].results.len(), 1);
+                assert_eq!(types[0].results[0], ValType::I32);
+            }
+            _ => panic!("Expected Type section"),
+        }
+    }
+
+    // ========== Import Section Test ==========
+    #[test]
+    fn test_import_section_func() {
+        // Import section with one function import
+        let mut bytes = vec![0x00, 0x61, 0x73, 0x6D, 0x01, 0x00, 0x00, 0x00];
+        bytes.push(0x02); // import section id
+                          // section size = 1 + 1 + 3 + 1 + 4 + 1 + 1 = 12 = 0x0C
+        bytes.push(0x0C); // section size
+        bytes.push(0x01); // 1 import
+        bytes.push(0x03); // module name len
+        bytes.extend_from_slice(b"env");
+        bytes.push(0x04); // field name len
+        bytes.extend_from_slice(b"test");
+        bytes.push(0x00); // import kind: func
+        bytes.push(0x00); // type index
+
+        let program = parse(&bytes).unwrap();
+        match &program.sections[0] {
+            Section::Import(imports) => {
+                assert_eq!(imports.len(), 1);
+                assert_eq!(imports[0].module, "env");
+                assert_eq!(imports[0].name, "test");
+                match imports[0].desc {
+                    ImportDesc::Func(0) => {}
+                    _ => panic!("Expected Func import with index 0"),
+                }
+            }
+            _ => panic!("Expected Import section"),
+        }
+    }
+
+    // ========== Round-trip Tests ==========
+    #[test]
+    fn test_roundtrip_empty_module() {
+        let original = vec![0x00, 0x61, 0x73, 0x6D, 0x01, 0x00, 0x00, 0x00];
+        let program = parse(&original).unwrap();
+        let encoded = encode(&program);
+        assert_eq!(encoded, original);
+    }
+
+    #[test]
+    fn test_roundtrip_type_section() {
+        // Build a simple program with a type section
+        let mut program = Program { sections: vec![] };
+        let func_type = FuncType {
+            params: vec![ValType::I32],
+            results: vec![ValType::I64],
+        };
+        program.sections.push(Section::Type(vec![func_type]));
+
+        let encoded = encode(&program);
+        let reparsed = parse(&encoded).unwrap();
+
+        assert_eq!(reparsed.sections.len(), 1);
+        match &reparsed.sections[0] {
+            Section::Type(types) => {
+                assert_eq!(types.len(), 1);
+                assert_eq!(types[0].params.len(), 1);
+                assert_eq!(types[0].params[0], ValType::I32);
+                assert_eq!(types[0].results.len(), 1);
+                assert_eq!(types[0].results[0], ValType::I64);
+            }
+            _ => panic!("Expected Type section after roundtrip"),
+        }
+    }
+
+    // ========== Integration Test with Real Wasm File ==========
+    #[test]
+    fn test_parse_real_wasm_file() {
+        // This test parses the simplest.wasm file from the example directory
+        // It's a real WebAssembly binary that exports a "main" function returning 42
+        let wasm_bytes = include_bytes!("../example/simplest/simplest.wasm");
+        let program = parse(wasm_bytes).expect("Failed to parse simplest.wasm");
+
+        // Should have: Type, Function, Memory, Export, Code sections
+        assert!(
+            !program.sections.is_empty(),
+            "Expected at least one section"
+        );
+
+        // Verify we can identify the sections
+        let mut found_type = false;
+        let mut found_export = false;
+        let mut found_code = false;
+
+        for section in &program.sections {
+            match section {
+                Section::Type(_) => found_type = true,
+                Section::Export(exports) => {
+                    found_export = true;
+                    // Check for "main" export
+                    assert!(
+                        exports.iter().any(|e| e.name == "main"),
+                        "Expected 'main' export"
+                    );
+                }
+                Section::Code(_) => found_code = true,
+                _ => {}
+            }
+        }
+
+        assert!(found_type, "Expected Type section");
+        assert!(found_export, "Expected Export section");
+        assert!(found_code, "Expected Code section");
+    }
+}
