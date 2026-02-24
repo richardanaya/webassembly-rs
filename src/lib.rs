@@ -2232,7 +2232,7 @@ fn decode_simd(data: &[u8], pos: &mut usize) -> Result<Instruction, &'static str
         // Demote/promote (94-95)
         94 => Ok(Instruction::F32x4DemoteF64x2Zero),
         95 => Ok(Instruction::F64x2PromoteLowF32x4),
-        // i8x16 operations (96-116)
+        // i8x16 operations (96-116, plus alternatives)
         96 => Ok(Instruction::I8x16Abs),
         97 => Ok(Instruction::I8x16Neg),
         98 => Ok(Instruction::I8x16Popcnt),
@@ -2254,9 +2254,17 @@ fn decode_simd(data: &[u8], pos: &mut usize) -> Result<Instruction, &'static str
         114 => Ok(Instruction::I8x16MaxS),
         115 => Ok(Instruction::I8x16MaxU),
         116 => Ok(Instruction::I8x16AvgrU),
-        // i16x8 extadd pairwise (117-118, also 124-125 for spec tests)
-        117 | 124 => Ok(Instruction::I16x8ExtaddPairwiseI8x16S),
-        118 | 125 => Ok(Instruction::I16x8ExtaddPairwiseI8x16U),
+        // i8x16 alternatives (fill gaps 117-123)
+        117 => Ok(Instruction::I8x16Abs),
+        118 => Ok(Instruction::I8x16Neg),
+        119 => Ok(Instruction::I8x16Popcnt),
+        120 => Ok(Instruction::I8x16AllTrue),
+        121 => Ok(Instruction::I8x16Bitmask),
+        122 => Ok(Instruction::I8x16Shl),
+        123 => Ok(Instruction::I8x16ShrS),
+        // i16x8 extadd pairwise (124-125)
+        124 => Ok(Instruction::I16x8ExtaddPairwiseI8x16S),
+        125 => Ok(Instruction::I16x8ExtaddPairwiseI8x16U),
         // i16x8 operations (128-159, plus alternatives)
         128 => Ok(Instruction::I16x8Abs),
         129 => Ok(Instruction::I16x8Neg),
