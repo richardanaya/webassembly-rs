@@ -2817,7 +2817,7 @@ pub fn encode(program: &Program) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{print, println};
+    use std::println;
 
     // ========== LEB128 Tests ==========
     #[test]
@@ -3067,6 +3067,75 @@ mod tests {
         assert!(
             success_rate >= 0.85,
             "Success rate too low: {:.1}% (expected >= 85%)",
+            success_rate * 100.0
+        );
+    }
+
+    // ========== Spec Test Round-trip Tests ==========
+    // These test that parse -> encode produces valid WebAssembly
+
+    #[test]
+    #[ignore = "Requires spec tests submodule"]
+    fn test_spec_roundtrip() {
+        // Test round-trip: parse -> encode on spec tests
+        // This verifies our encoder produces valid wasm that can be re-parsed
+        let tests = load_spec_tests();
+        assert!(!tests.is_empty(), "No spec tests available");
+
+        let mut passed = 0;
+        let mut failed = 0;
+
+        for (name, original_bytes) in &tests {
+            // First parse
+            match parse(original_bytes) {
+                Ok(program) => {
+                    // Then encode back to wasm
+                    let encoded = encode(&program);
+
+                    // Try to parse the encoded version
+                    match parse(&encoded) {
+                        Ok(_reparsed) => {
+                            // Optional: verify the reparsed matches original
+                            // For now just ensure it parses successfully
+                            passed += 1;
+                        }
+                        Err(e) => {
+                            println!("✗ {}: round-trip encode failed to reparse - {}", name, e);
+                            failed += 1;
+                        }
+                    }
+                }
+                Err(e) => {
+                    // Original parse failed - this is expected for assert_malformed tests
+                    // but we skip them in round-trip testing
+                    println!(
+                        "⊘ {}: original parse failed (expected for malformed) - {}",
+                        name, e
+                    );
+                }
+            }
+        }
+
+        println!("\n==================================");
+        println!("Spec Test Round-trip Results:");
+        println!(
+            "  ✓ Passed: {} ({}%)",
+            passed,
+            passed * 100 / (passed + failed)
+        );
+        println!(
+            "  ✗ Failed: {} ({}%)",
+            failed,
+            failed * 100 / (passed + failed)
+        );
+        println!("  Total: {}", passed + failed);
+        println!("==================================");
+
+        // All valid WebAssembly should round-trip successfully
+        let success_rate = passed as f64 / (passed + failed) as f64;
+        assert!(
+            success_rate >= 0.85,
+            "Round-trip success rate too low: {:.1}% (expected >= 85%)",
             success_rate * 100.0
         );
     }

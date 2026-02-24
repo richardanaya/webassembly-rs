@@ -7,4 +7,4 @@ description = "a library for working with WebAssembly"
 license = "MIT OR Apache-2.0"
 categories = ["wasm", "no-std"]
 repository = "https://www.github.com/richardanaya/webassembly-rs"
-exclude = ["tests/", "target/", "*.sh", "*.py", "build-spec-tests.sh", "convert-all-spec-tests.sh", "generate-test-wasm.py", "example/"]
+exclude = ["tests/", "target/", "*.sh", "*.py", "example/"]
