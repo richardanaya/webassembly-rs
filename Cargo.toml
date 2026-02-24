@@ -1,6 +1,6 @@
 [package]
 name = "webassembly"
-version = "0.9.4"
+version = "0.10.0"
 authors = ["Richard Anaya"]
 edition = "2024"
 description = "Complete WebAssembly opcode constants and parser with 100% spec test coverage"

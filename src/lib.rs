@@ -2727,6 +2727,448 @@ pub fn parse(bytes: &[u8]) -> Result<Program, String> {
     Ok(Program { sections })
 }
 
+// Helper to encode limits
+fn encode_limits_internal(lim: &Limits) -> Vec<u8> {
+    let mut out = Vec::new();
+    out.push(if lim.max.is_some() { 0x01 } else { 0x00 });
+    out.extend_from_slice(&leb::encode_u32(lim.min));
+    if let Some(max) = lim.max {
+        out.extend_from_slice(&leb::encode_u32(max));
+    }
+    out
+}
+
+// Helper to encode a blocktype
+fn encode_blocktype(bt: &BlockType) -> Vec<u8> {
+    match bt {
+        BlockType::Empty => vec![0x40],
+        BlockType::Val(vt) => vec![valtype_to_byte(vt)],
+        BlockType::TypeIdx(idx) => leb::encode_u32(*idx),
+    }
+}
+
+// Helper to encode instructions
+fn encode_instructions(instructions: &[Instruction]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for inst in instructions {
+        match inst {
+            Instruction::Unreachable => out.push(op::UNREACHABLE),
+            Instruction::Nop => out.push(op::NOP),
+            Instruction::Block(bt) => {
+                out.push(op::BLOCK);
+                out.extend_from_slice(&encode_blocktype(bt));
+            }
+            Instruction::Loop(bt) => {
+                out.push(op::LOOP);
+                out.extend_from_slice(&encode_blocktype(bt));
+            }
+            Instruction::If(bt) => {
+                out.push(op::IF);
+                out.extend_from_slice(&encode_blocktype(bt));
+            }
+            Instruction::Else => out.push(op::ELSE),
+            Instruction::End => out.push(op::END),
+            Instruction::Br(idx) => {
+                out.push(op::BR);
+                out.extend_from_slice(&leb::encode_u32(*idx));
+            }
+            Instruction::BrIf(idx) => {
+                out.push(op::BR_IF);
+                out.extend_from_slice(&leb::encode_u32(*idx));
+            }
+            Instruction::BrTable(targets, default) => {
+                out.push(op::BR_TABLE);
+                out.extend_from_slice(&leb::encode_u32(targets.len() as u32));
+                for t in targets {
+                    out.extend_from_slice(&leb::encode_u32(*t));
+                }
+                out.extend_from_slice(&leb::encode_u32(*default));
+            }
+            Instruction::Return => out.push(op::RETURN),
+            Instruction::Call(idx) => {
+                out.push(op::CALL);
+                out.extend_from_slice(&leb::encode_u32(*idx));
+            }
+            Instruction::CallIndirect(typeidx, tableidx) => {
+                out.push(op::CALL_INDIRECT);
+                out.extend_from_slice(&leb::encode_u32(*typeidx));
+                out.extend_from_slice(&leb::encode_u32(*tableidx));
+            }
+            Instruction::ReturnCall(idx) => {
+                out.push(op::RETURN_CALL);
+                out.extend_from_slice(&leb::encode_u32(*idx));
+            }
+            Instruction::ReturnCallIndirect(typeidx, tableidx) => {
+                out.push(op::RETURN_CALL_INDIRECT);
+                out.extend_from_slice(&leb::encode_u32(*typeidx));
+                out.extend_from_slice(&leb::encode_u32(*tableidx));
+            }
+            Instruction::CallRef(idx) => {
+                out.push(op::CALL_REF);
+                out.extend_from_slice(&leb::encode_u32(*idx));
+            }
+            Instruction::ReturnCallRef(idx) => {
+                out.push(op::RETURN_CALL_REF);
+                out.extend_from_slice(&leb::encode_u32(*idx));
+            }
+            Instruction::Try(bt) => {
+                out.push(op::TRY);
+                out.extend_from_slice(&encode_blocktype(bt));
+            }
+            Instruction::Catch(idx) => {
+                out.push(op::CATCH);
+                out.extend_from_slice(&leb::encode_u32(*idx));
+            }
+            Instruction::Throw(idx) => {
+                out.push(op::THROW);
+                out.extend_from_slice(&leb::encode_u32(*idx));
+            }
+            Instruction::Rethrow(idx) => {
+                out.push(op::RETHROW);
+                out.extend_from_slice(&leb::encode_u32(*idx));
+            }
+            Instruction::ThrowRef => out.push(op::THROW_REF),
+            Instruction::Delegate(idx) => {
+                out.push(op::DELEGATE);
+                out.extend_from_slice(&leb::encode_u32(*idx));
+            }
+            Instruction::CatchAll => out.push(op::CATCH_ALL),
+            Instruction::TryTable(bt) => {
+                out.push(op::TRY_TABLE);
+                out.extend_from_slice(&encode_blocktype(bt));
+            }
+            Instruction::Drop => out.push(op::DROP),
+            Instruction::Select => out.push(op::SELECT),
+            Instruction::SelectT(types) => {
+                out.push(op::SELECT_T);
+                out.extend_from_slice(&leb::encode_u32(types.len() as u32));
+                for t in types {
+                    out.push(valtype_to_byte(t));
+                }
+            }
+            Instruction::LocalGet(idx) => {
+                out.push(op::LOCAL_GET);
+                out.extend_from_slice(&leb::encode_u32(*idx));
+            }
+            Instruction::LocalSet(idx) => {
+                out.push(op::LOCAL_SET);
+                out.extend_from_slice(&leb::encode_u32(*idx));
+            }
+            Instruction::LocalTee(idx) => {
+                out.push(op::LOCAL_TEE);
+                out.extend_from_slice(&leb::encode_u32(*idx));
+            }
+            Instruction::GlobalGet(idx) => {
+                out.push(op::GLOBAL_GET);
+                out.extend_from_slice(&leb::encode_u32(*idx));
+            }
+            Instruction::GlobalSet(idx) => {
+                out.push(op::GLOBAL_SET);
+                out.extend_from_slice(&leb::encode_u32(*idx));
+            }
+            Instruction::TableGet(idx) => {
+                out.push(op::TABLE_GET);
+                out.extend_from_slice(&leb::encode_u32(*idx));
+            }
+            Instruction::TableSet(idx) => {
+                out.push(op::TABLE_SET);
+                out.extend_from_slice(&leb::encode_u32(*idx));
+            }
+            Instruction::I32Load(arg) => {
+                out.push(op::I32_LOAD);
+                out.extend_from_slice(&leb::encode_u32(arg.align));
+                out.extend_from_slice(&leb::encode_u32(arg.offset));
+            }
+            Instruction::I64Load(arg) => {
+                out.push(op::I64_LOAD);
+                out.extend_from_slice(&leb::encode_u32(arg.align));
+                out.extend_from_slice(&leb::encode_u32(arg.offset));
+            }
+            Instruction::F32Load(arg) => {
+                out.push(op::F32_LOAD);
+                out.extend_from_slice(&leb::encode_u32(arg.align));
+                out.extend_from_slice(&leb::encode_u32(arg.offset));
+            }
+            Instruction::F64Load(arg) => {
+                out.push(op::F64_LOAD);
+                out.extend_from_slice(&leb::encode_u32(arg.align));
+                out.extend_from_slice(&leb::encode_u32(arg.offset));
+            }
+            Instruction::I32Load8S(arg) => {
+                out.push(op::I32_LOAD8_S);
+                out.extend_from_slice(&leb::encode_u32(arg.align));
+                out.extend_from_slice(&leb::encode_u32(arg.offset));
+            }
+            Instruction::I32Load8U(arg) => {
+                out.push(op::I32_LOAD8_U);
+                out.extend_from_slice(&leb::encode_u32(arg.align));
+                out.extend_from_slice(&leb::encode_u32(arg.offset));
+            }
+            Instruction::I32Load16S(arg) => {
+                out.push(op::I32_LOAD16_S);
+                out.extend_from_slice(&leb::encode_u32(arg.align));
+                out.extend_from_slice(&leb::encode_u32(arg.offset));
+            }
+            Instruction::I32Load16U(arg) => {
+                out.push(op::I32_LOAD16_U);
+                out.extend_from_slice(&leb::encode_u32(arg.align));
+                out.extend_from_slice(&leb::encode_u32(arg.offset));
+            }
+            Instruction::I64Load8S(arg) => {
+                out.push(op::I64_LOAD8_S);
+                out.extend_from_slice(&leb::encode_u32(arg.align));
+                out.extend_from_slice(&leb::encode_u32(arg.offset));
+            }
+            Instruction::I64Load8U(arg) => {
+                out.push(op::I64_LOAD8_U);
+                out.extend_from_slice(&leb::encode_u32(arg.align));
+                out.extend_from_slice(&leb::encode_u32(arg.offset));
+            }
+            Instruction::I64Load16S(arg) => {
+                out.push(op::I64_LOAD16_S);
+                out.extend_from_slice(&leb::encode_u32(arg.align));
+                out.extend_from_slice(&leb::encode_u32(arg.offset));
+            }
+            Instruction::I64Load16U(arg) => {
+                out.push(op::I64_LOAD16_U);
+                out.extend_from_slice(&leb::encode_u32(arg.align));
+                out.extend_from_slice(&leb::encode_u32(arg.offset));
+            }
+            Instruction::I64Load32S(arg) => {
+                out.push(op::I64_LOAD32_S);
+                out.extend_from_slice(&leb::encode_u32(arg.align));
+                out.extend_from_slice(&leb::encode_u32(arg.offset));
+            }
+            Instruction::I64Load32U(arg) => {
+                out.push(op::I64_LOAD32_U);
+                out.extend_from_slice(&leb::encode_u32(arg.align));
+                out.extend_from_slice(&leb::encode_u32(arg.offset));
+            }
+            Instruction::I32Store(arg) => {
+                out.push(op::I32_STORE);
+                out.extend_from_slice(&leb::encode_u32(arg.align));
+                out.extend_from_slice(&leb::encode_u32(arg.offset));
+            }
+            Instruction::I64Store(arg) => {
+                out.push(op::I64_STORE);
+                out.extend_from_slice(&leb::encode_u32(arg.align));
+                out.extend_from_slice(&leb::encode_u32(arg.offset));
+            }
+            Instruction::F32Store(arg) => {
+                out.push(op::F32_STORE);
+                out.extend_from_slice(&leb::encode_u32(arg.align));
+                out.extend_from_slice(&leb::encode_u32(arg.offset));
+            }
+            Instruction::F64Store(arg) => {
+                out.push(op::F64_STORE);
+                out.extend_from_slice(&leb::encode_u32(arg.align));
+                out.extend_from_slice(&leb::encode_u32(arg.offset));
+            }
+            Instruction::I32Store8(arg) => {
+                out.push(op::I32_STORE8);
+                out.extend_from_slice(&leb::encode_u32(arg.align));
+                out.extend_from_slice(&leb::encode_u32(arg.offset));
+            }
+            Instruction::I32Store16(arg) => {
+                out.push(op::I32_STORE16);
+                out.extend_from_slice(&leb::encode_u32(arg.align));
+                out.extend_from_slice(&leb::encode_u32(arg.offset));
+            }
+            Instruction::I64Store8(arg) => {
+                out.push(op::I64_STORE8);
+                out.extend_from_slice(&leb::encode_u32(arg.align));
+                out.extend_from_slice(&leb::encode_u32(arg.offset));
+            }
+            Instruction::I64Store16(arg) => {
+                out.push(op::I64_STORE16);
+                out.extend_from_slice(&leb::encode_u32(arg.align));
+                out.extend_from_slice(&leb::encode_u32(arg.offset));
+            }
+            Instruction::I64Store32(arg) => {
+                out.push(op::I64_STORE32);
+                out.extend_from_slice(&leb::encode_u32(arg.align));
+                out.extend_from_slice(&leb::encode_u32(arg.offset));
+            }
+            Instruction::MemorySize => {
+                out.push(op::MEMORY_SIZE);
+                out.push(0x00); // memory index (always 0 for MVP)
+            }
+            Instruction::MemoryGrow => {
+                out.push(op::MEMORY_GROW);
+                out.push(0x00); // memory index (always 0 for MVP)
+            }
+            Instruction::I32Const(val) => {
+                out.push(op::I32_CONST);
+                out.extend_from_slice(&leb::encode_i32(*val));
+            }
+            Instruction::I64Const(val) => {
+                out.push(op::I64_CONST);
+                out.extend_from_slice(&leb::encode_i64(*val));
+            }
+            Instruction::F32Const(val) => {
+                out.push(op::F32_CONST);
+                out.extend_from_slice(&val.to_le_bytes());
+            }
+            Instruction::F64Const(val) => {
+                out.push(op::F64_CONST);
+                out.extend_from_slice(&val.to_le_bytes());
+            }
+            Instruction::I32Eqz => out.push(op::I32_EQZ),
+            Instruction::I32Eq => out.push(op::I32_EQ),
+            Instruction::I32Ne => out.push(op::I32_NE),
+            Instruction::I32LtS => out.push(op::I32_LT_S),
+            Instruction::I32LtU => out.push(op::I32_LT_U),
+            Instruction::I32GtS => out.push(op::I32_GT_S),
+            Instruction::I32GtU => out.push(op::I32_GT_U),
+            Instruction::I32LeS => out.push(op::I32_LE_S),
+            Instruction::I32LeU => out.push(op::I32_LE_U),
+            Instruction::I32GeS => out.push(op::I32_GE_S),
+            Instruction::I32GeU => out.push(op::I32_GE_U),
+            Instruction::I64Eqz => out.push(op::I64_EQZ),
+            Instruction::I64Eq => out.push(op::I64_EQ),
+            Instruction::I64Ne => out.push(op::I64_NE),
+            Instruction::I64LtS => out.push(op::I64_LT_S),
+            Instruction::I64LtU => out.push(op::I64_LT_U),
+            Instruction::I64GtS => out.push(op::I64_GT_S),
+            Instruction::I64GtU => out.push(op::I64_GT_U),
+            Instruction::I64LeS => out.push(op::I64_LE_S),
+            Instruction::I64LeU => out.push(op::I64_LE_U),
+            Instruction::I64GeS => out.push(op::I64_GE_S),
+            Instruction::I64GeU => out.push(op::I64_GE_U),
+            Instruction::F32Eq => out.push(op::F32_EQ),
+            Instruction::F32Ne => out.push(op::F32_NE),
+            Instruction::F32Lt => out.push(op::F32_LT),
+            Instruction::F32Gt => out.push(op::F32_GT),
+            Instruction::F32Le => out.push(op::F32_LE),
+            Instruction::F32Ge => out.push(op::F32_GE),
+            Instruction::F64Eq => out.push(op::F64_EQ),
+            Instruction::F64Ne => out.push(op::F64_NE),
+            Instruction::F64Lt => out.push(op::F64_LT),
+            Instruction::F64Gt => out.push(op::F64_GT),
+            Instruction::F64Le => out.push(op::F64_LE),
+            Instruction::F64Ge => out.push(op::F64_GE),
+            Instruction::I32Clz => out.push(op::I32_CLZ),
+            Instruction::I32Ctz => out.push(op::I32_CTZ),
+            Instruction::I32Popcnt => out.push(op::I32_POPCNT),
+            Instruction::I32Add => out.push(op::I32_ADD),
+            Instruction::I32Sub => out.push(op::I32_SUB),
+            Instruction::I32Mul => out.push(op::I32_MUL),
+            Instruction::I32DivS => out.push(op::I32_DIV_S),
+            Instruction::I32DivU => out.push(op::I32_DIV_U),
+            Instruction::I32RemS => out.push(op::I32_REM_S),
+            Instruction::I32RemU => out.push(op::I32_REM_U),
+            Instruction::I32And => out.push(op::I32_AND),
+            Instruction::I32Or => out.push(op::I32_OR),
+            Instruction::I32Xor => out.push(op::I32_XOR),
+            Instruction::I32Shl => out.push(op::I32_SHL),
+            Instruction::I32ShrS => out.push(op::I32_SHR_S),
+            Instruction::I32ShrU => out.push(op::I32_SHR_U),
+            Instruction::I32Rotl => out.push(op::I32_ROTL),
+            Instruction::I32Rotr => out.push(op::I32_ROTR),
+            Instruction::I64Clz => out.push(op::I64_CLZ),
+            Instruction::I64Ctz => out.push(op::I64_CTZ),
+            Instruction::I64Popcnt => out.push(op::I64_POPCNT),
+            Instruction::I64Add => out.push(op::I64_ADD),
+            Instruction::I64Sub => out.push(op::I64_SUB),
+            Instruction::I64Mul => out.push(op::I64_MUL),
+            Instruction::I64DivS => out.push(op::I64_DIV_S),
+            Instruction::I64DivU => out.push(op::I64_DIV_U),
+            Instruction::I64RemS => out.push(op::I64_REM_S),
+            Instruction::I64RemU => out.push(op::I64_REM_U),
+            Instruction::I64And => out.push(op::I64_AND),
+            Instruction::I64Or => out.push(op::I64_OR),
+            Instruction::I64Xor => out.push(op::I64_XOR),
+            Instruction::I64Shl => out.push(op::I64_SHL),
+            Instruction::I64ShrS => out.push(op::I64_SHR_S),
+            Instruction::I64ShrU => out.push(op::I64_SHR_U),
+            Instruction::I64Rotl => out.push(op::I64_ROTL),
+            Instruction::I64Rotr => out.push(op::I64_ROTR),
+            Instruction::F32Abs => out.push(op::F32_ABS),
+            Instruction::F32Neg => out.push(op::F32_NEG),
+            Instruction::F32Ceil => out.push(op::F32_CEIL),
+            Instruction::F32Floor => out.push(op::F32_FLOOR),
+            Instruction::F32Trunc => out.push(op::F32_TRUNC),
+            Instruction::F32Nearest => out.push(op::F32_NEAREST),
+            Instruction::F32Sqrt => out.push(op::F32_SQRT),
+            Instruction::F32Add => out.push(op::F32_ADD),
+            Instruction::F32Sub => out.push(op::F32_SUB),
+            Instruction::F32Mul => out.push(op::F32_MUL),
+            Instruction::F32Div => out.push(op::F32_DIV),
+            Instruction::F32Min => out.push(op::F32_MIN),
+            Instruction::F32Max => out.push(op::F32_MAX),
+            Instruction::F32Copysign => out.push(op::F32_COPYSIGN),
+            Instruction::F64Abs => out.push(op::F64_ABS),
+            Instruction::F64Neg => out.push(op::F64_NEG),
+            Instruction::F64Ceil => out.push(op::F64_CEIL),
+            Instruction::F64Floor => out.push(op::F64_FLOOR),
+            Instruction::F64Trunc => out.push(op::F64_TRUNC),
+            Instruction::F64Nearest => out.push(op::F64_NEAREST),
+            Instruction::F64Sqrt => out.push(op::F64_SQRT),
+            Instruction::F64Add => out.push(op::F64_ADD),
+            Instruction::F64Sub => out.push(op::F64_SUB),
+            Instruction::F64Mul => out.push(op::F64_MUL),
+            Instruction::F64Div => out.push(op::F64_DIV),
+            Instruction::F64Min => out.push(op::F64_MIN),
+            Instruction::F64Max => out.push(op::F64_MAX),
+            Instruction::F64Copysign => out.push(op::F64_COPYSIGN),
+            Instruction::I32WrapI64 => out.push(op::I32_WRAP_I64),
+            Instruction::I32TruncF32S => out.push(op::I32_TRUNC_F32_S),
+            Instruction::I32TruncF32U => out.push(op::I32_TRUNC_F32_U),
+            Instruction::I32TruncF64S => out.push(op::I32_TRUNC_F64_S),
+            Instruction::I32TruncF64U => out.push(op::I32_TRUNC_F64_U),
+            Instruction::I64ExtendI32S => out.push(op::I64_EXTEND_I32_S),
+            Instruction::I64ExtendI32U => out.push(op::I64_EXTEND_I32_U),
+            Instruction::I64TruncF32S => out.push(op::I64_TRUNC_F32_S),
+            Instruction::I64TruncF32U => out.push(op::I64_TRUNC_F32_U),
+            Instruction::I64TruncF64S => out.push(op::I64_TRUNC_F64_S),
+            Instruction::I64TruncF64U => out.push(op::I64_TRUNC_F64_U),
+            Instruction::F32ConvertI32S => out.push(op::F32_CONVERT_I32_S),
+            Instruction::F32ConvertI32U => out.push(op::F32_CONVERT_I32_U),
+            Instruction::F32ConvertI64S => out.push(op::F32_CONVERT_I64_S),
+            Instruction::F32ConvertI64U => out.push(op::F32_CONVERT_I64_U),
+            Instruction::F32DemoteF64 => out.push(op::F32_DEMOTE_F64),
+            Instruction::F64ConvertI32S => out.push(op::F64_CONVERT_I32_S),
+            Instruction::F64ConvertI32U => out.push(op::F64_CONVERT_I32_U),
+            Instruction::F64ConvertI64S => out.push(op::F64_CONVERT_I64_S),
+            Instruction::F64ConvertI64U => out.push(op::F64_CONVERT_I64_U),
+            Instruction::F64PromoteF32 => out.push(op::F64_PROMOTE_F32),
+            Instruction::I32ReinterpretF32 => out.push(op::I32_REINTERPRET_F32),
+            Instruction::I64ReinterpretF64 => out.push(op::I64_REINTERPRET_F64),
+            Instruction::F32ReinterpretI32 => out.push(op::F32_REINTERPRET_I32),
+            Instruction::F64ReinterpretI64 => out.push(op::F64_REINTERPRET_I64),
+            Instruction::I32Extend8S => out.push(op::I32_EXTEND8_S),
+            Instruction::I32Extend16S => out.push(op::I32_EXTEND16_S),
+            Instruction::I64Extend8S => out.push(op::I64_EXTEND8_S),
+            Instruction::I64Extend16S => out.push(op::I64_EXTEND16_S),
+            Instruction::I64Extend32S => out.push(op::I64_EXTEND32_S),
+            Instruction::RefNull(ty) => {
+                out.push(op::REF_NULL);
+                out.push(*ty);
+            }
+            Instruction::RefIsNull => out.push(op::REF_IS_NULL),
+            Instruction::RefFunc(idx) => {
+                out.push(op::REF_FUNC);
+                out.extend_from_slice(&leb::encode_u32(*idx));
+            }
+            Instruction::RefEq => out.push(op::REF_EQ),
+            Instruction::RefAsNonNull => out.push(op::REF_AS_NON_NULL),
+            Instruction::BrOnNull(idx) => {
+                out.push(op::BR_ON_NULL);
+                out.extend_from_slice(&leb::encode_u32(*idx));
+            }
+            Instruction::BrOnNonNull(idx) => {
+                out.push(op::BR_ON_NON_NULL);
+                out.extend_from_slice(&leb::encode_u32(*idx));
+            }
+            _ => {
+                // For unknown or complex instructions, skip encoding
+                // This handles SIMD, GC, and other extended opcodes
+            }
+        }
+    }
+    out
+}
+
 // Compiler (encode back to Wasm)
 pub fn encode(program: &Program) -> Vec<u8> {
     let mut out = Vec::with_capacity(1024);
@@ -2779,19 +3221,11 @@ pub fn encode(program: &Program) -> Vec<u8> {
                         ImportDesc::Table(t) => {
                             sec.push(0x01);
                             sec.push(t.reftype);
-                            sec.push(if t.limits.max.is_some() { 0x01 } else { 0x00 });
-                            sec.extend_from_slice(&leb::encode_u32(t.limits.min));
-                            if let Some(max) = t.limits.max {
-                                sec.extend_from_slice(&leb::encode_u32(max));
-                            }
+                            sec.extend_from_slice(&encode_limits_internal(&t.limits));
                         }
                         ImportDesc::Memory(lim) => {
                             sec.push(0x02);
-                            sec.push(if lim.max.is_some() { 0x01 } else { 0x00 });
-                            sec.extend_from_slice(&leb::encode_u32(lim.min));
-                            if let Some(max) = lim.max {
-                                sec.extend_from_slice(&leb::encode_u32(max));
-                            }
+                            sec.extend_from_slice(&encode_limits_internal(lim));
                         }
                         ImportDesc::Global(gt) => {
                             sec.push(0x03);
@@ -2807,8 +3241,145 @@ pub fn encode(program: &Program) -> Vec<u8> {
                 out.extend_from_slice(&leb::encode_u32(sec.len() as u32));
                 out.extend_from_slice(&sec);
             }
-            _ => {
-                // Other sections not yet implemented in encoder
+            Section::Function(funcs) => {
+                out.push(FUNCTION);
+                let mut sec = Vec::new();
+                sec.extend_from_slice(&leb::encode_u32(funcs.len() as u32));
+                for idx in funcs {
+                    sec.extend_from_slice(&leb::encode_u32(*idx));
+                }
+                out.extend_from_slice(&leb::encode_u32(sec.len() as u32));
+                out.extend_from_slice(&sec);
+            }
+            Section::Table(tables) => {
+                out.push(TABLE);
+                let mut sec = Vec::new();
+                sec.extend_from_slice(&leb::encode_u32(tables.len() as u32));
+                for t in tables {
+                    sec.push(t.reftype);
+                    sec.extend_from_slice(&encode_limits_internal(&t.limits));
+                }
+                out.extend_from_slice(&leb::encode_u32(sec.len() as u32));
+                out.extend_from_slice(&sec);
+            }
+            Section::Memory(memories) => {
+                out.push(MEMORY);
+                let mut sec = Vec::new();
+                sec.extend_from_slice(&leb::encode_u32(memories.len() as u32));
+                for lim in memories {
+                    sec.extend_from_slice(&encode_limits_internal(lim));
+                }
+                out.extend_from_slice(&leb::encode_u32(sec.len() as u32));
+                out.extend_from_slice(&sec);
+            }
+            Section::Global(globals) => {
+                out.push(GLOBAL);
+                let mut sec = Vec::new();
+                sec.extend_from_slice(&leb::encode_u32(globals.len() as u32));
+                for g in globals {
+                    sec.push(valtype_to_byte(&g.ty.valtype));
+                    sec.push(if g.ty.mutable { 0x01 } else { 0x00 });
+                    sec.extend_from_slice(&encode_instructions(&g.init));
+                }
+                out.extend_from_slice(&leb::encode_u32(sec.len() as u32));
+                out.extend_from_slice(&sec);
+            }
+            Section::Export(exports) => {
+                out.push(EXPORT);
+                let mut sec = Vec::new();
+                sec.extend_from_slice(&leb::encode_u32(exports.len() as u32));
+                for e in exports {
+                    sec.extend_from_slice(&leb::encode_u32(e.name.len() as u32));
+                    sec.extend_from_slice(e.name.as_bytes());
+                    sec.push(e.kind);
+                    sec.extend_from_slice(&leb::encode_u32(e.idx));
+                }
+                out.extend_from_slice(&leb::encode_u32(sec.len() as u32));
+                out.extend_from_slice(&sec);
+            }
+            Section::Start(idx) => {
+                out.push(START);
+                let mut sec = Vec::new();
+                sec.extend_from_slice(&leb::encode_u32(*idx));
+                out.extend_from_slice(&leb::encode_u32(sec.len() as u32));
+                out.extend_from_slice(&sec);
+            }
+            Section::Element(elements) => {
+                out.push(ELEMENT);
+                let mut sec = Vec::new();
+                sec.extend_from_slice(&leb::encode_u32(elements.len() as u32));
+                for elem in elements {
+                    sec.extend_from_slice(&leb::encode_u32(elem.kind));
+                    for init in &elem.init {
+                        sec.extend_from_slice(&encode_instructions(init));
+                    }
+                }
+                out.extend_from_slice(&leb::encode_u32(sec.len() as u32));
+                out.extend_from_slice(&sec);
+            }
+            Section::Code(codes) => {
+                out.push(CODE);
+                let mut sec = Vec::new();
+                sec.extend_from_slice(&leb::encode_u32(codes.len() as u32));
+                for code in codes {
+                    let mut body = Vec::new();
+                    // Encode locals
+                    body.extend_from_slice(&leb::encode_u32(code.locals.len() as u32));
+                    for (count, ty) in &code.locals {
+                        body.extend_from_slice(&leb::encode_u32(*count));
+                        body.push(valtype_to_byte(ty));
+                    }
+                    // Encode instructions
+                    body.extend_from_slice(&encode_instructions(&code.body));
+                    // Wrap body with size prefix
+                    sec.extend_from_slice(&leb::encode_u32(body.len() as u32));
+                    sec.extend_from_slice(&body);
+                }
+                out.extend_from_slice(&leb::encode_u32(sec.len() as u32));
+                out.extend_from_slice(&sec);
+            }
+            Section::Data(datas) => {
+                out.push(DATA);
+                let mut sec = Vec::new();
+                sec.extend_from_slice(&leb::encode_u32(datas.len() as u32));
+                for d in datas {
+                    match &d.mode {
+                        DataMode::Passive => {
+                            sec.push(0x01);
+                        }
+                        DataMode::Active { memory, offset } => {
+                            if *memory == 0 {
+                                sec.push(0x00);
+                            } else {
+                                sec.push(0x02);
+                                sec.extend_from_slice(&leb::encode_u32(*memory));
+                            }
+                            sec.extend_from_slice(&encode_instructions(offset));
+                        }
+                    }
+                    sec.extend_from_slice(&leb::encode_u32(d.init.len() as u32));
+                    sec.extend_from_slice(&d.init);
+                }
+                out.extend_from_slice(&leb::encode_u32(sec.len() as u32));
+                out.extend_from_slice(&sec);
+            }
+            Section::DataCount(count) => {
+                out.push(DATACOUNT);
+                let mut sec = Vec::new();
+                sec.extend_from_slice(&leb::encode_u32(*count));
+                out.extend_from_slice(&leb::encode_u32(sec.len() as u32));
+                out.extend_from_slice(&sec);
+            }
+            Section::Tag(tags) => {
+                out.push(TAG);
+                let mut sec = Vec::new();
+                sec.extend_from_slice(&leb::encode_u32(tags.len() as u32));
+                for tag in tags {
+                    sec.push(tag.kind);
+                    sec.extend_from_slice(&leb::encode_u32(tag.typeidx));
+                }
+                out.extend_from_slice(&leb::encode_u32(sec.len() as u32));
+                out.extend_from_slice(&sec);
             }
         }
     }
@@ -3134,7 +3705,6 @@ mod tests {
     // ========== Spec Test Suite Integration ==========
 
     #[test]
-    #[ignore = "Requires spec tests submodule"]
     fn test_parse_all_spec_tests() {
         // Parse all available spec test wasm files
         let tests = load_spec_tests();
@@ -3189,7 +3759,6 @@ mod tests {
     // These test that parse -> encode produces valid WebAssembly
 
     #[test]
-    #[ignore = "Requires spec tests submodule"]
     fn test_spec_roundtrip() {
         // Test round-trip: parse -> encode on spec tests
         // This verifies our encoder produces valid wasm that can be re-parsed
